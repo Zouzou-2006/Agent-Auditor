@@ -6,6 +6,7 @@
 // charged for data DataCo can't deliver.
 
 import {
+  ORDER_ID_HEADER,
   PAYMENT_RESPONSE_HEADER,
   PAYMENT_SIGNATURE_HEADER,
   buildRequirements,
@@ -30,6 +31,9 @@ export interface PriceQuote {
   price_usd: number;
   source: "DataCo";
 }
+
+// orders.order_id is a uuid.
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 type Parsed = { ok: true; ticker: string; date: string } | { ok: false; error: string };
 
@@ -63,7 +67,13 @@ export async function handleDataCo(req: Request): Promise<Response> {
   const parsed = parseParams(url.searchParams);
   if (!parsed.ok) return Response.json({ error: parsed.error }, { status: 400 });
 
-  const requirements = await buildRequirements(DATACO_PRICE, wallet);
+  // The memo must be the gateway's order_id, the same value on the 402 and on the paid retry.
+  const orderId = req.headers.get(ORDER_ID_HEADER);
+  if (!orderId || !UUID.test(orderId)) {
+    return Response.json({ error: `${ORDER_ID_HEADER} header with the order_id is required` }, { status: 400 });
+  }
+
+  const requirements = await buildRequirements(DATACO_PRICE, wallet, orderId);
   const resource = {
     url: url.toString(),
     description: `DataCo ${parsed.ticker} price quote for ${parsed.date}`,
