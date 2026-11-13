@@ -38,3 +38,6 @@ secrets/
 Thumbs.db
 npm-debug.log*
 .vercel
+
+# Windows folder settings
+desktop.ini
