@@ -41,8 +41,8 @@ flowchart LR
     PayAI["PayAI<br/>x402 facilitator"]
     Seller["Seller<br/>/api/sellers/[seller]"]
     Chain[("Solana devnet<br/>USDC transfer,<br/>memo = order_id")]
-    Streams["QuickNode Streams"]
-    Webhook["Webhook + matcher<br/>/api/webhooks/streams"]
+    Streams["QuickNode Stream<br/>devnet, Block dataset,<br/>filter: gateway wallet"]
+    Webhook["Webhook + matcher<br/>/api/webhooks/streams<br/>(on Vercel)"]
     Booking["Booking<br/>lib/booking.ts"]
     DB[("Supabase<br/>orders, payments,<br/>deliveries, journal_entries,<br/>exceptions, sellers")]
     Dashboard["Dashboard<br/>Approve / Block Seller"]
@@ -66,8 +66,10 @@ flowchart LR
   - **x402:** pay-per-request over HTTP. The seller answers `402 Payment Required` with a quote, and the gateway pays and retries.
   - **The memo:** the seller's quote must carry the gateway's `order_id`, and the gateway refuses to sign anything else, so every gateway payment can be matched on-chain.
 - **Sellers:** three fake data sellers. DataCo is honest, CheapData takes the money and delivers nothing, and SketchyNews hides a prompt injection.
-- **Streams, webhook and booking:** QuickNode Streams watches the wallet on-chain and posts each transaction to the webhook. The webhook matches it to its order by memo, and booking writes the journal entry or the exception.
-- **Dashboard:** shows orders, payments, checks, journal entries and exceptions live, with a one-sentence AI summary of each decision.
+- **Facilitator:** PayAI verifies and settles each x402 payment on Solana devnet.
+- **Streams, webhook and booking:** a QuickNode Stream on Solana devnet reads the Block dataset. Its filter forwards only blocks that mention the gateway wallet, and its webhook destination is `/api/webhooks/streams`. The webhook checks the Stream's signature, matches each payment to its order by memo, and booking writes the journal entry or the exception. `docs/quicknode-stream.md` has the setup.
+- **Dashboard:** shows orders, payments, checks, journal entries and exceptions live, with a tracker for the four demo scenes, a one-sentence AI summary of each decision, and a read-only copilot that answers questions about the data.
+- **Hosting:** the app is deployed on Vercel (URL shared with judges). `docs/vercel.md` has the settings.
 
 ## Status
 
@@ -76,27 +78,37 @@ What's on `main` today:
 | Part | Status |
 | --- | --- |
 | Finance rules (`lib/rules.ts`, `config/rules.json`) | Working, unit-tested |
-| Gateway: `POST /api/orders` and `POST /api/orders/[id]/approve` with x402 via PayAI | Built and unit-tested; first live purchase pending |
+| Gateway: `POST /api/orders` and `POST /api/orders/[id]/approve` with x402 via PayAI | Working, live purchases verified on devnet |
 | `order_id` in the payment memo | Working, verified on devnet (`docs/memo-test.md`) |
 | DataCo seller | Working |
-| Booking, journal entries and exceptions (`lib/booking.ts`) on Supabase | Working, checked against the real database |
+| Delivery checks (`lib/delivery.ts`) | Working |
+| QuickNode Streams webhook and matcher (`/api/webhooks/streams`) | Working, verified live |
+| Booking from the chain: journal entries and exceptions (`lib/booking.ts`) on Supabase | Working, verified live |
 | Human actions: `POST /api/exceptions/[id]` (Approve, Block Seller) | Working |
 | Buyer agent (`lib/buyer-agent.ts`) | Working |
 | Supabase schema: six tables, read-only browser access, realtime | Working |
-| Delivery checks | In progress (the gateway calls a stub, so a paid order stays `paid`) |
-| Streams webhook and matcher | In progress (the route returns 501) |
-| CheapData and SketchyNews sellers | In progress |
-| Dashboard and AI summaries | In progress |
-| Beat 2 and beat 4 scripts | In progress (PR #15) |
+| Dashboard: live updates, four-scene tracker, AI one-line summaries, read-only copilot | Working |
+| Vercel deployment | Working (URL shared with judges) |
+| CheapData seller (beat 2) | In progress |
+| SketchyNews preview page | In progress |
+
+### Verified live on devnet (Nov 13)
+
+| Beat | Result | Transaction |
+| --- | --- | --- |
+| 1. Clean purchase | Booked in about 9 s: payment matched by memo through QuickNode Streams, all 3 delivery checks passed, journal entry written (Dr Data purchases expense / Cr USDC - agent wallet, $0.10) | [Fwz6Pw8i…](https://explorer.solana.com/tx/Fwz6Pw8iRSEQ3vvoN14gvQWMgatDpTSMJb9kzopE5o6uffh9kBkZ41ze2eUnhCRVjE5KHYCMisYTy5fT5pSdnvT?cluster=devnet) |
+| 2. Empty delivery | Not yet run (waiting on the CheapData seller) | |
+| 3. Prompt injection | Denied: "seller not approved". No money moved. | none (nothing was sent) |
+| 4. Stolen key | Critical `no_order` exception about 1 s after the block | [D8GUiDkQ…](https://explorer.solana.com/tx/D8GUiDkQbQqJcc7Mk72cNVy3HCzzdQymDzTyRo8zQmww9tB38oPHd3q75eZEsLoagtjWHJ494gsdmQzkSrGcSti?cluster=devnet) |
 
 ## The four demo beats
 
 Each beat is a script in `demo/` that can be rerun for the video.
 
-1. **Clean purchase:** the agent buys a SOL price quote from DataCo, and the payment is matched and booked as a journal entry. *Ordering, the rules and the paid purchase work. Booking it from the chain is in progress.*
-2. **Empty delivery:** CheapData takes the payment and returns nothing, so a `nothing_delivered` exception appears. A human clicks Block Seller, and the agent's next CheapData order is denied: "seller blocked." *In progress.*
-3. **Prompt injection:** an order to pay `premiumreports`, a seller that isn't approved, is denied before payment: "seller not approved." No money moves. *The script and the rule are on `main`.* The script files the order directly, so the demo doesn't depend on whether a recent Claude model falls for the injection. *The SketchyNews page is in progress.*
-4. **Stolen key:** a script pays the attacker straight from the wallet, skipping the gateway, and a critical `no_order` exception appears within seconds. *In progress.*
+1. **Clean purchase:** the agent buys a SOL price quote from DataCo, and the payment is matched and booked as a journal entry. *Verified live on devnet.*
+2. **Empty delivery:** CheapData takes the payment and returns nothing, so a `nothing_delivered` exception appears. A human clicks Block Seller, and the agent's next CheapData order is denied: "seller blocked." *The script is on `main`; the CheapData seller is in progress.*
+3. **Prompt injection:** an order to pay `premiumreports`, a seller that isn't approved, is denied before payment: "seller not approved." No money moves. *Verified live on devnet.* The script files the order directly, so the demo doesn't depend on whether a recent Claude model falls for the injection. *The SketchyNews page is in progress.*
+4. **Stolen key:** a script pays the attacker straight from the wallet, skipping the gateway, and a critical `no_order` exception appears within seconds. *Verified live on devnet (about 1 s after the block).*
 
 ## Why Solana
 
@@ -129,7 +141,9 @@ You'll need **Node 26+**, a Supabase project, and devnet SOL and USDC (from `fau
    node --import ./scripts/ts-resolve.mjs demo/beat1.ts --dry-run   # builds the order with Claude, doesn't send it
    node --import ./scripts/ts-resolve.mjs demo/beat1.ts             # beat 1
    node --import ./scripts/ts-resolve.mjs demo/beat3.ts             # beat 3
+   node --import ./scripts/ts-resolve.mjs demo/beat4.ts             # beat 4 (needs the Stream running)
    ```
+   Set `GATEWAY_URL` to run beats 1 and 3 against a deployed gateway instead of `localhost` (beat 4 skips the gateway).
 
 `npm run check` runs the typecheck, lint, tests and build.
 
@@ -147,7 +161,7 @@ From `.env.example`:
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL. |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase public key for the dashboard (read-only access). |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase service-role key for server code. Never sent to the browser. |
-| `QUICKNODE_STREAMS_SECRET` | QuickNode Streams secret, reserved for the Streams webhook (in progress; not read by any code yet). |
+| `QUICKNODE_STREAMS_SECRET` | The QuickNode Stream's security token. The webhook uses it to check the signature on every delivery and rejects anything unsigned. |
 | `ANTHROPIC_API_KEY` | Claude API key for the buyer agent. |
 | `USDC_MINT` | The devnet USDC mint (`4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU`). |
 
@@ -155,7 +169,7 @@ Used by specific scripts:
 
 | Variable | What it's for |
 | --- | --- |
-| `GATEWAY_URL` | Where the buyer agent and demo scripts send orders. Optional; defaults to `http://localhost:3000`. |
+| `GATEWAY_URL` | Where the buyer agent and demo scripts send orders. Set it to run the demo against a deployed gateway; defaults to `http://localhost:3000`. |
 | `ATTACKER_WALLET_ADDRESS` | The attacker's public address, for beat 4 and SketchyNews. Created by `scripts/create-wallets.ts`. |
 | `TEST_SELLER_WALLET_SECRET`, `TEST_SELLER_WALLET_ADDRESS` | A throwaway seller wallet for the memo test only. |
 | `ENABLE_MEMO_TEST_SELLER` | Set to `1` to turn on the memo test's seller route. It's off otherwise. |
@@ -166,8 +180,9 @@ Used by specific scripts:
 - Supabase (Postgres, realtime)
 - x402 payments, with the PayAI facilitator
 - Solana devnet and USDC
-- QuickNode Streams
-- Claude API: the buyer agent, and the decision summaries (in progress)
+- QuickNode Streams (Block dataset, filtered to the gateway wallet)
+- Claude API: the buyer agent, the decision summaries and the dashboard copilot
+- Vercel hosting
 
 ## What's next
 
