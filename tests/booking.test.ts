@@ -6,7 +6,7 @@ import {
   flagUnmatchedPayment,
   tryBook,
 } from "../lib/booking";
-import type { Delivery, Order, Payment } from "../lib/db";
+import type { DeliveryRow, OrderRow, PaymentRow } from "../lib/db-types";
 import { FakeDb } from "./fakeDb";
 
 const DATACO_WALLET = "DataCoWa11et1111111111111111111111111111111";
@@ -15,39 +15,55 @@ const OTHER_WALLET = "SomeoneE1se2222222222222222222222222222222";
 const ORDER = "ord_1";
 const BLOCK_TIME = "2026-11-13T15:30:00+00:00"; // timestamptz, as Supabase returns it
 
-const payment = (overrides: Partial<Payment> = {}): Payment => ({
+const payment = (overrides: Partial<PaymentRow> = {}): PaymentRow => ({
   tx_signature: "sig_1",
+  block_time: BLOCK_TIME,
   from_wallet: AGENT_WALLET,
   to_wallet: DATACO_WALLET,
   amount: 100000,
   memo: ORDER,
   order_id: ORDER,
-  block_time: BLOCK_TIME,
+  raw: {},
   ...overrides,
 });
 
-const delivery = (checks: Partial<Delivery["checks"]> = {}): Delivery => {
+type Checks = { received: boolean; format: boolean; matches_order: boolean };
+const delivery = (checks: Partial<Checks> = {}): DeliveryRow => {
   const c = { received: true, format: true, matches_order: true, ...checks };
-  return { order_id: ORDER, checks: c, passed: c.received && c.format && c.matches_order };
+  return {
+    order_id: ORDER,
+    received_at: BLOCK_TIME,
+    body: c.received ? '{"ticker":"SOL"}' : "",
+    checks: c,
+    passed: c.received && c.format && c.matches_order,
+  };
 };
 const EMPTY_DELIVERY = delivery({ received: false, format: false, matches_order: false });
 
 // "paid" = the gateway has sent the payment; the webhook may not have confirmed it yet.
-const paidOrder = (overrides: Partial<Order> = {}): Order => ({
+const paidOrder = (overrides: Partial<OrderRow> = {}): OrderRow => ({
   order_id: ORDER,
+  created_at: BLOCK_TIME,
   seller_id: "dataco",
   item: "price_quote",
   params: { ticker: "SOL", date: "2026-11-14" },
+  max_amount: 100000,
+  purpose: "Daily SOL price for the treasury report",
   status: "paid",
+  deny_reason: null,
   quote_amount: 100000,
   quote_wallet: DATACO_WALLET,
+  summary: null,
   ...overrides,
 });
 
 let db: FakeDb;
 beforeEach(() => {
   db = new FakeDb();
-  db.addSeller({ seller_id: "dataco", name: "DataCo", wallet: DATACO_WALLET, status: "approved" });
+  db.addSeller({
+    seller_id: "dataco", name: "DataCo", url: "http://localhost:3000/api/sellers/dataco",
+    wallet: DATACO_WALLET, status: "approved",
+  });
   db.addOrder(paidOrder());
 });
 
@@ -146,6 +162,35 @@ describe("tryBook", () => {
     await tryBook(ORDER, db);
 
     expect(db.journal[0].description).toBe("news_report from DataCo");
+  });
+
+  it.each([
+    ["a numeric ticker", { ticker: 42 }],
+    ["no ticker", { date: "2026-11-14" }],
+    ["an array", ["SOL"]],
+    ["null", null],
+  ])("a price_quote whose params have %s is described as 'price_quote from DataCo'", async (_label, params) => {
+    db.addOrder(paidOrder({ params }));
+    db.addPayment(payment());
+    db.addDelivery(delivery());
+
+    await tryBook(ORDER, db);
+
+    expect(db.journal[0].description).toBe("price_quote from DataCo");
+  });
+
+  it.each([
+    ["an empty object", {}, "nothing_delivered"],
+    ["a string instead of true", { received: "true", format: true, matches_order: true }, "nothing_delivered"],
+    ["a missing format field", { received: true, matches_order: true }, "bad_format"],
+    ["null", null, "nothing_delivered"],
+  ])("checks JSON with %s fails closed, even if passed=true", async (_label, checks, type) => {
+    db.addPayment(payment());
+    db.addDelivery({ ...delivery(), checks, passed: true });
+
+    expect((await tryBook(ORDER, db)).result).toBe("exception");
+    expect(db.exceptions[0].type).toBe(type);
+    expect(db.journal).toHaveLength(0);
   });
 
   it("falls back to seller_id in the description if the seller row is missing", async () => {

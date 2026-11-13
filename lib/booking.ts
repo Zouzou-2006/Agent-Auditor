@@ -1,16 +1,15 @@
-import { getDb } from "./db";
+import { getDb, type Db, type NewJournalEntry } from "./booking-db";
 import type {
-  Db,
-  Delivery,
-  DeliveryChecks,
+  DeliveryRow,
   ExceptionRow,
+  ExceptionSeverity,
   ExceptionType,
-  JournalEntry,
-  Order,
-  Payment,
-  Seller,
-  Severity,
-} from "./db";
+  JournalEntryRow,
+  Json,
+  OrderRow,
+  PaymentRow,
+  SellerRow,
+} from "./db-types";
 
 export const ACCOUNTS = {
   dataExpense: "Data purchases expense",
@@ -21,21 +20,33 @@ export const ACCOUNTS = {
 export type TryBookResult =
   | { result: "waiting" } // payment or delivery hasn't arrived yet
   | { result: "skipped" } // order isn't in "paid" state, or another call already claimed it
-  | { result: "booked"; entry: JournalEntry }
+  | { result: "booked"; entry: JournalEntryRow }
   | { result: "exception"; exception: ExceptionRow };
 
 interface Problem {
   type: ExceptionType;
-  severity: Severity;
+  severity: ExceptionSeverity;
   summary: string;
 }
 
+type JsonObject = { [key: string]: Json | undefined };
+
+function isJsonObject(value: Json): value is JsonObject {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 // Delivery checks in the order they're evaluated; the first failure names the problem.
-const DELIVERY_CHECKS: { check: keyof DeliveryChecks; type: ExceptionType; severity: Severity }[] = [
+// deliveries.checks is jsonb, e.g. {"received":true,"format":true,"matches_order":false}.
+const DELIVERY_CHECKS: { check: string; type: ExceptionType; severity: ExceptionSeverity }[] = [
   { check: "received", type: "nothing_delivered", severity: "high" },
   { check: "format", type: "bad_format", severity: "medium" },
   { check: "matches_order", type: "wrong_data", severity: "medium" },
 ];
+
+/** A check passes only if it is exactly `true`; a missing or malformed value fails. */
+function checkPassed(checks: Json, name: string): boolean {
+  return isJsonObject(checks) && checks[name] === true;
+}
 
 /**
  * Returns the single most severe problem, or null if the purchase is clean.
@@ -44,7 +55,7 @@ const DELIVERY_CHECKS: { check: keyof DeliveryChecks; type: ExceptionType; sever
  * > bad_format (medium) > wrong_data (medium).
  * The summary is a factual fallback; the AI summary may overwrite it later.
  */
-export function findProblem(order: Order, payment: Payment, delivery: Delivery): Problem | null {
+export function findProblem(order: OrderRow, payment: PaymentRow, delivery: DeliveryRow): Problem | null {
   if (payment.to_wallet !== order.quote_wallet) {
     return {
       type: "wallet_mismatch",
@@ -59,7 +70,7 @@ export function findProblem(order: Order, payment: Payment, delivery: Delivery):
       summary: `Paid ${payment.amount}, but the quote was ${order.quote_amount ?? "missing"}`,
     };
   }
-  const failed = DELIVERY_CHECKS.find((c) => !delivery.checks[c.check]);
+  const failed = DELIVERY_CHECKS.find((c) => !checkPassed(delivery.checks, c.check));
   if (failed) {
     return {
       type: failed.type,
@@ -76,12 +87,13 @@ export function findProblem(order: Order, payment: Payment, delivery: Delivery):
 
 /**
  * Journal description, per SPEC.md: "SOL price quote from DataCo" for a price_quote,
- * "<item> from <seller name>" for anything else. Falls back to seller_id if the
- * seller row is missing, so booking never fails on a label.
+ * "<item> from <seller name>" for anything else (or a price_quote whose params have
+ * no string ticker). Falls back to seller_id if the seller row is missing, so
+ * booking never fails on a label.
  */
-export function describePurchase(order: Order, seller: Seller | null): string {
+export function describePurchase(order: OrderRow, seller: SellerRow | null): string {
   const sellerName = seller?.name ?? order.seller_id;
-  const ticker = order.params.ticker;
+  const ticker = isJsonObject(order.params) ? order.params.ticker : undefined;
   if (order.item === "price_quote" && typeof ticker === "string") {
     return `${ticker} price quote from ${sellerName}`;
   }
@@ -89,7 +101,7 @@ export function describePurchase(order: Order, seller: Seller | null): string {
 }
 
 /** UTC calendar date (YYYY-MM-DD) of the payment's timestamptz block_time. */
-function entryDate(payment: Payment): string {
+function entryDate(payment: PaymentRow): string {
   const t = new Date(payment.block_time);
   if (Number.isNaN(t.getTime())) {
     throw new Error(`payment ${payment.tx_signature} has an invalid block_time: ${payment.block_time}`);
@@ -97,7 +109,7 @@ function entryDate(payment: Payment): string {
   return t.toISOString().slice(0, 10);
 }
 
-function purchaseEntry(order: Order, payment: Payment, seller: Seller | null): Omit<JournalEntry, "entry_id"> {
+function purchaseEntry(order: OrderRow, payment: PaymentRow, seller: SellerRow | null): NewJournalEntry {
   return {
     order_id: order.order_id,
     tx_signature: payment.tx_signature,
@@ -149,7 +161,7 @@ export async function tryBook(order_id: string, db: Db = getDb()): Promise<TryBo
  * A payment we couldn't tie to any order. Flag it; never book it.
  * Webhooks retry, so if this transaction already has an exception, do nothing and return null.
  */
-export async function flagUnmatchedPayment(payment: Payment, db: Db = getDb()): Promise<ExceptionRow | null> {
+export async function flagUnmatchedPayment(payment: PaymentRow, db: Db = getDb()): Promise<ExceptionRow | null> {
   if (await db.getExceptionByTx(payment.tx_signature)) return null;
   return db.insertException({
     order_id: null,
@@ -178,7 +190,7 @@ async function loadExceptionContext(db: Db, exception_id: string) {
  * A human accepts the purchase despite the problem: book the normal entry.
  * Returns null if the exception was already resolved (e.g. a double click).
  */
-export async function approveException(exception_id: string, db: Db = getDb()): Promise<JournalEntry | null> {
+export async function approveException(exception_id: string, db: Db = getDb()): Promise<JournalEntryRow | null> {
   const { order, payment, seller } = await loadExceptionContext(db, exception_id);
   if (!(await db.updateExceptionStatusIf(exception_id, "open", "approved"))) return null;
 
@@ -191,7 +203,7 @@ export async function approveException(exception_id: string, db: Db = getDb()): 
  * A human decides the seller cheated: block them and write the money off as a loss.
  * Returns null if the exception was already resolved.
  */
-export async function blockSeller(exception_id: string, db: Db = getDb()): Promise<JournalEntry | null> {
+export async function blockSeller(exception_id: string, db: Db = getDb()): Promise<JournalEntryRow | null> {
   const { order, payment, seller } = await loadExceptionContext(db, exception_id);
   if (!(await db.updateExceptionStatusIf(exception_id, "open", "seller_blocked"))) return null;
 
