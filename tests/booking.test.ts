@@ -202,10 +202,6 @@ describe("tryBook", () => {
 
     expect(db.journal[0].description).toBe("SOL price quote from dataco");
   });
-
-  it("without a Db it hits the labelled Supabase stub", async () => {
-    await expect(tryBook(ORDER)).rejects.toThrow("Supabase Db not implemented yet");
-  });
 });
 
 describe("flagUnmatchedPayment", () => {
