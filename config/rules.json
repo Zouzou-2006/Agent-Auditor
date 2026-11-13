@@ -1,0 +1,8 @@
+{
+  "network": "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
+  "asset": "USDC",
+  "usdc_mint": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+  "max_per_purchase": 1000000,
+  "max_per_day": 5000000,
+  "human_review_over": 500000
+}
