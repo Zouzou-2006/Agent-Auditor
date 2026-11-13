@@ -76,7 +76,7 @@ What's on `main` today:
 | Part | Status |
 | --- | --- |
 | Finance rules (`lib/rules.ts`, `config/rules.json`) | Working, unit-tested |
-| Gateway: `POST /api/orders` and `POST /api/orders/[id]/approve` with x402 via PayAI | Working |
+| Gateway: `POST /api/orders` and `POST /api/orders/[id]/approve` with x402 via PayAI | Built and unit-tested; first live purchase pending |
 | `order_id` in the payment memo | Working, verified on devnet (`docs/memo-test.md`) |
 | DataCo seller | Working |
 | Booking, journal entries and exceptions (`lib/booking.ts`) on Supabase | Working, checked against the real database |
