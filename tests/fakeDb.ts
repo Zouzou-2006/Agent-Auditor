@@ -66,6 +66,7 @@ export class FakeDb implements Db {
 
   async setSellerStatus(id: string, status: SellerStatus) {
     const s = this.sellers.get(id);
-    if (s) s.status = status;
+    if (!s) throw new Error(`booking-db: setSellerStatus: seller ${id} not found`); // same as Supabase Db
+    s.status = status;
   }
 }
