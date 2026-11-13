@@ -20,6 +20,8 @@ export const PAYMENT_SIGNATURE_HEADER = "PAYMENT-SIGNATURE";
 export const PAYMENT_REQUIRED_HEADER = "PAYMENT-REQUIRED";
 /** Response header carrying the settlement result on a paid response (base64 JSON). */
 export const PAYMENT_RESPONSE_HEADER = "PAYMENT-RESPONSE";
+/** Request header the gateway sends on every seller call; its value becomes the payment memo. */
+export const ORDER_ID_HEADER = "X-Order-Id";
 
 /** One way to pay, as x402 v2 sends it. `amount` is a string of USDC base units. */
 export interface PaymentRequirements {
@@ -29,7 +31,7 @@ export interface PaymentRequirements {
   asset: string;
   payTo: string;
   maxTimeoutSeconds: number;
-  extra: { feePayer?: string };
+  extra: { feePayer?: string; memo: string };
 }
 
 export interface PaymentRequired {
@@ -81,8 +83,13 @@ export function resetFeePayerCache(): void {
   feePayerCache = null;
 }
 
-/** The quote: `amount` base units of devnet USDC, paid to `payTo`, on Solana devnet. */
-export async function buildRequirements(amount: number, payTo: string): Promise<PaymentRequirements> {
+/**
+ * The quote: `amount` base units of devnet USDC, paid to `payTo`, on Solana devnet.
+ * In x402 the seller picks the memo, so we put the gateway's order_id there. That memo is how the
+ * Streams matcher links the on-chain payment to its order; without it every payment would look
+ * like the stolen-key case (`no_order`).
+ */
+export async function buildRequirements(amount: number, payTo: string, memo: string): Promise<PaymentRequirements> {
   if (!Number.isSafeInteger(amount) || amount <= 0) throw new Error(`bad amount ${amount}`);
   return {
     scheme: "exact",
@@ -91,7 +98,7 @@ export async function buildRequirements(amount: number, payTo: string): Promise<
     asset: rules.usdc_mint, // the mint address, not the word "USDC" (rule 6)
     payTo,
     maxTimeoutSeconds: 60,
-    extra: { feePayer: await facilitatorFeePayer() },
+    extra: { feePayer: await facilitatorFeePayer(), memo },
   };
 }
 

@@ -8,6 +8,7 @@ import { decodeHeader, encodeHeader, resetFeePayerCache, type PaymentRequired } 
 const DATACO_WALLET = "DataCoWa11et1111111111111111111111111111111";
 const FEE_PAYER = "FeePayer111111111111111111111111111111111111";
 const FACILITATOR = "https://facilitator.test";
+const ORDER_ID = "0b6f3c2e-8a51-4e7b-9a0d-5f2c1e4d7a90";
 
 type FacilitatorReply = { verify?: object; settle?: object };
 
@@ -32,7 +33,7 @@ function mockFacilitator(reply: FacilitatorReply = {}) {
 }
 
 const call = (query: string, headers: Record<string, string> = {}, seller = "dataco") =>
-  GET(new Request(`http://localhost/api/sellers/${seller}?${query}`, { headers }), {
+  GET(new Request(`http://localhost/api/sellers/${seller}?${query}`, { headers: { "X-Order-Id": ORDER_ID, ...headers } }), {
     params: Promise.resolve({ seller }),
   });
 
@@ -62,7 +63,7 @@ describe("DataCo without payment", () => {
       amount: "100000",
       asset: rules.usdc_mint,
       payTo: DATACO_WALLET,
-      extra: { feePayer: FEE_PAYER },
+      extra: { feePayer: FEE_PAYER, memo: ORDER_ID },
     });
 
     // What the gateway will do with it (amount arrives as a string, so it converts first).
@@ -81,6 +82,15 @@ describe("DataCo with payment", () => {
     expect(await res.json()).toEqual({ ticker: "SOL", date: "2026-11-14", price_usd: 142.1, source: "DataCo" });
     expect(decodeHeader(res.headers.get("PAYMENT-RESPONSE")!)).toMatchObject({ success: true, transaction: "5igTx" });
     expect(calls).toEqual(["/supported", "/verify", "/settle"]);
+  });
+
+  it("sends the facilitator the same order_id memo as the 402 quote", async () => {
+    mockFacilitator();
+    await call("ticker=SOL&date=2026-11-14", paid);
+    const fetchMock = vi.mocked(fetch);
+    const settle = fetchMock.mock.calls.find(([url]) => String(url).endsWith("/settle"));
+    const sent = JSON.parse(String((settle?.[1] as RequestInit).body));
+    expect(sent.paymentRequirements.extra.memo).toBe(ORDER_ID);
   });
 
   it("gives no data when the facilitator rejects the payment", async () => {
@@ -114,6 +124,16 @@ describe("DataCo bad requests never get a quote", () => {
   ])("%s → 400", async (_name, query) => {
     const calls = mockFacilitator();
     const res = await call(query);
+    expect(res.status).toBe(400);
+    expect(calls).toEqual([]);
+  });
+
+  it.each([
+    ["missing X-Order-Id", ""],
+    ["X-Order-Id that isn't a uuid", "order-1"],
+  ])("%s → 400, because the payment couldn't be matched to its order", async (_name, orderId) => {
+    const calls = mockFacilitator();
+    const res = await call("ticker=SOL&date=2026-11-14", { "X-Order-Id": orderId });
     expect(res.status).toBe(400);
     expect(calls).toEqual([]);
   });

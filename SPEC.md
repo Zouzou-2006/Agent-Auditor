@@ -266,6 +266,10 @@ POST /api/orders
 - Flow: `checkOrder` → (`needsReview` → `pending_review`) → save `paying` → call the seller → `checkQuote` and the memo check → pay → `paid` → delivery checks → wait up to ~20 s for `tryBook` to book it.
 - `status` is `paid` when the payment and delivery are done but the Streams webhook hasn't landed yet; booking still happens when it arrives.
 - `reason` is the deny reason for `denied`, otherwise a short note. `data` is the seller's JSON body when there is one.
+
+
+- `502 { "error": "...", "order_id": "..." }`: a payment **was signed** but settlement wasn't confirmed. The order stays `paying` (so a late payment still matches it) and the gateway never retries, because that could pay twice.
+
 ```
 POST /api/orders/[id]/approve
 ```
