@@ -10,6 +10,7 @@
 
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 // git global options that take a separate value: `git -C <path> commit`, `git -c k=v commit`
@@ -82,25 +83,54 @@ function gitSubcommandIndex(words) {
   return i < words.length ? i : -1;
 }
 
+const CD_COMMANDS = new Set(["cd", "pushd", "set-location", "sl", "chdir"]);
+
 /**
  * @param {string} command full command string from tool_input.command
- * @returns {{ isCommit: boolean, noVerify: boolean }}
+ * @returns {{ isCommit: boolean, noVerify: boolean, commitDir: string | null }}
+ *   commitDir: where the commit runs, relative to the shell's starting directory
+ *   (from `cd <dir> && git commit` and/or `git -C <dir> commit`); null = the starting directory.
  */
 export function analyzeCommand(command) {
   let isCommit = false;
   let noVerify = false;
+  let commitDir = null;
+  let cdDir = null;
   for (const words of splitCommands(command)) {
     if (words.includes("--no-verify")) noVerify = true;
+    if (CD_COMMANDS.has(words[0]?.toLowerCase()) && words[1] && !words[1].startsWith("-")) {
+      cdDir = cdDir ? path.join(cdDir, words[1]) : words[1];
+      if (path.isAbsolute(words[1])) cdDir = words[1];
+      continue;
+    }
     const sub = gitSubcommandIndex(words);
     if (sub === -1 || words[sub] !== "commit") continue;
     isCommit = true;
+    commitDir = cdDir;
+    const c = words.indexOf("-C");
+    if (c !== -1 && c < sub && words[c + 1]) {
+      const dashC = words[c + 1];
+      commitDir = path.isAbsolute(dashC) || !commitDir ? dashC : path.join(commitDir, dashC);
+    }
     // `git commit -n` / `-an` / `-nm "msg"` is the short form of --no-verify.
     for (const w of words.slice(sub + 1)) {
       if (w === "--") break;
       if (/^-[a-zA-Z]+$/.test(w) && w.includes("n")) noVerify = true;
     }
   }
-  return { isCommit, noVerify };
+  return { isCommit, noVerify, commitDir };
+}
+
+/**
+ * Root of the git repo/worktree that a commit in `dir` would land in, or null if `dir` isn't
+ * inside one. With git worktrees this is the worktree, not the main checkout.
+ *
+ * @param {string} dir
+ * @returns {string | null}
+ */
+export function repoRoot(dir) {
+  const result = spawnSync("git", ["rev-parse", "--show-toplevel"], { cwd: dir, encoding: "utf8" });
+  return result.status === 0 ? path.resolve(result.stdout.trim()) : null;
 }
 
 /**
@@ -126,7 +156,7 @@ function main() {
   const command = input?.tool_input?.command;
   if (typeof command !== "string") process.exit(0);
 
-  const { isCommit, noVerify } = analyzeCommand(command);
+  const { isCommit, noVerify, commitDir } = analyzeCommand(command);
 
   if (noVerify) {
     process.stderr.write(
@@ -136,8 +166,12 @@ function main() {
   }
   if (!isCommit) process.exit(0);
 
-  const cwd = normalizeCwd(process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd());
-  process.stderr.write("pre-commit-check: running `npm run check` before git commit...\n");
+  // Check the repo the commit actually targets (cd / git -C / a git worktree), not just the
+  // directory the session started in.
+  const start = input.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd();
+  const target = commitDir ? path.resolve(start, commitDir) : start;
+  const cwd = normalizeCwd(repoRoot(target) ?? process.env.CLAUDE_PROJECT_DIR ?? start);
+  process.stderr.write(`pre-commit-check: running \`npm run check\` in ${cwd} before git commit...\n`);
   const result = spawnSync("npm run check", {
     cwd,
     shell: true,
