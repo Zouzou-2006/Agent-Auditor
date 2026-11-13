@@ -257,6 +257,21 @@ POST /api/orders/[id]/approve
 - Then it continues the normal flow: 402 quote, `checkQuote`, pay.
 - The dashboard's Approve button calls this endpoint on a `pending_review` order. Approve on an exception calls `approveException`.
 
+**Human actions on an exception (Cooper):**
+```
+POST /api/exceptions/[id]
+{ "action": "approve" }        -> approveException(id)
+{ "action": "block_seller" }   -> blockSeller(id)
+-> 200 { "exception": { ...the exceptions row, with its new status } }
+```
+- `approve` sets the exception to `approved` and books the normal entry (debit `Data purchases expense`). `block_seller` sets it to `seller_blocked`, blocks the seller and books the loss (debit `Loss on undelivered purchases`). Both credit `USDC - agent wallet`.
+- The dashboard's Approve and Block Seller buttons on an exception call this endpoint. Approve on a `pending_review` order calls `POST /api/orders/[id]/approve` instead.
+- Errors are `{ "error": "<short message>" }`, never a stack trace or key:
+  - `400`: the body is missing, isn't JSON, or `action` isn't exactly `approve` or `block_seller`.
+  - `404`: no exception with that id.
+  - `409`: the exception isn't `open` any more (already handled, e.g. a double click), or it's a `no_order` exception, which has no order to book or seller to block (resolving those is "what's next").
+  - `500`: anything else, with `{ "error": "internal error" }`. The detail goes to the server log only.
+
 ## 11. Who owns what
 
 - **Nizar:** repo setup, the Supabase tables, the gateway and x402 payments (including `/approve`), the Streams webhook and matcher. Runs the memo test first. Submits.
