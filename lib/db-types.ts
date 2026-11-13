@@ -1,4 +1,5 @@
-// Row types for the six Supabase tables, copied from SPEC.md section 4 and
+// Row types for the six Supabase tables (declared with `type`, not `interface`: supabase-js
+// needs rows assignable to Record<string, unknown> or typed insert/update calls take `never`), copied from SPEC.md section 4 and
 // supabase/migrations/0001_init.sql. Owner: Nizar. Change the SPEC first, then this file.
 //
 // bigint columns are `number`: PostgREST returns them as JSON numbers, and USDC base-unit
@@ -19,15 +20,15 @@ export type ExceptionType =
 export type ExceptionSeverity = "critical" | "high" | "medium";
 export type ExceptionStatus = "open" | "approved" | "seller_blocked";
 
-export interface SellerRow {
+export type SellerRow = {
   seller_id: string;
   name: string;
   url: string;
   wallet: string;
   status: SellerStatus;
-}
+};
 
-export interface OrderRow {
+export type OrderRow = {
   order_id: string;
   created_at: string;
   seller_id: string;
@@ -40,9 +41,9 @@ export interface OrderRow {
   quote_amount: number | null;
   quote_wallet: string | null;
   summary: string | null;
-}
+};
 
-export interface PaymentRow {
+export type PaymentRow = {
   tx_signature: string;
   block_time: string;
   from_wallet: string;
@@ -51,17 +52,17 @@ export interface PaymentRow {
   memo: string | null;
   order_id: string | null;
   raw: Json;
-}
+};
 
-export interface DeliveryRow {
+export type DeliveryRow = {
   order_id: string;
   received_at: string;
   body: string | null;
   checks: Json;
   passed: boolean;
-}
+};
 
-export interface JournalEntryRow {
+export type JournalEntryRow = {
   entry_id: string;
   order_id: string;
   tx_signature: string | null;
@@ -70,9 +71,9 @@ export interface JournalEntryRow {
   credit_account: string;
   amount: number;
   description: string;
-}
+};
 
-export interface ExceptionRow {
+export type ExceptionRow = {
   exception_id: string;
   created_at: string;
   order_id: string | null;
@@ -81,7 +82,7 @@ export interface ExceptionRow {
   severity: ExceptionSeverity;
   summary: string | null;
   status: ExceptionStatus;
-}
+};
 
 /** Columns with a database default (or nullable) are optional on insert. */
 type Insert<Row, Optional extends keyof Row> = Omit<Row, Optional> & Partial<Pick<Row, Optional>>;
