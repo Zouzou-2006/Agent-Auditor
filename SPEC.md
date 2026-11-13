@@ -26,6 +26,9 @@ Compiled from Cooper's 5-part spec in #hackathongroupaudit (Nov 11) plus every c
 14. **Workflow:** everyone works on their own branch and merges by PR. Tag `main` each time a beat works (`beat1-works`, `beat2-works`, …). Post a Slack update by 10 PM every night: done, next, blockers.
 15. **Beat 3's injection** names a seller that isn't in `sellers` (for example `premiumreports`), so it's denied with `seller not approved` every time.
 16. **`payments.from_wallet` / `to_wallet`** hold **owner wallet addresses**, not token account addresses. USDC moves between token accounts, so the webhook resolves each token account to its owner.
+17. **Memo test passed (Nov 13).** x402 on Solana carries the `order_id` as the SPL Memo, but the **seller** sets it: every seller's 402 quote must echo the gateway's `X-Order-Id` header as `extra.memo` (section 6). Facilitator: **PayAI** (`https://facilitator.payai.network`, no key); x402.org failed every devnet settlement. See `docs/memo-test.md`.
+18. **New order status `paying`.** The gateway saves the order as `paying` **before** any money moves, so the webhook never sees a memo with no order: `paying` → `paid` → `booked` / `exception`. A payment that fails before anything is signed → `denied` with reason `payment failed`. A quote whose memo isn't the order's id → `denied` with `quote memo doesn't match order`.
+19. **`POST /api/orders` waits up to ~20 s for booking.** If the Streams webhook hasn't arrived by then it returns `paid` (booking still happens when it lands).
 
 ---
 
@@ -81,7 +84,7 @@ Every piece of code uses these exact names. **Amounts are integers in USDC base 
 - `params` jsonb: for example `{"ticker":"SOL","date":"2026-11-14"}`
 - `max_amount` bigint: USDC base units
 - `purpose` text: why the agent is buying
-- `status` text: `pending_review`, `denied`, `paid`, `booked`, `exception`
+- `status` text: `pending_review`, `denied`, `paying`, `paid`, `booked`, `exception` (`paying`: saved before the payment is signed; see section 10)
 - `deny_reason` text: when denied, the rule's reason string (section 5), saved exactly as written
 - `quote_amount` bigint: from the seller's 402
 - `quote_wallet` text: from the seller's 402
@@ -169,6 +172,10 @@ An order is denied if any of these is true:
 | 4 | `quote over max` |
 | 5 | `quote wallet doesn't match seller` |
 | 6 | `wrong asset or network` |
+| Gateway: the quote's `extra.memo` isn't this order's `order_id` | `quote memo doesn't match order` |
+| Gateway: the payment failed before anything was signed (seller unreachable, bad 402, error) | `payment failed` |
+
+The two gateway reasons aren't finance rules (`lib/rules.ts` never returns them). The gateway applies them in `POST /api/orders` and `/approve`.
 
 **Test cases** (DataCo approved, $0.10 = 100000):
 1. DataCo, max 100000, spent 0, quote 100000 to DataCo's wallet in USDC on devnet → ok
@@ -188,6 +195,12 @@ An order is denied if any of these is true:
 ## 6. The three fake sellers (Fabi)
 
 Each seller is a small x402 endpoint that charges $0.10 (`100000`) per call.
+
+**Seller contract with the gateway:**
+- The gateway calls `GET <sellers.url>?<params as query string>` with header `X-Order-Id: <order_id>`.
+- The 402 quote's `extra.memo` **must equal that `X-Order-Id`**, on the first 402 and on the paid retry. That memo is how the payment is matched to its order on-chain. The gateway refuses to pay any other memo.
+- The quote's `asset` is the mint, `network` is `solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1`, and `amount` is a base-units string.
+- The seller wallet's USDC token account must already exist on devnet (x402 never creates it).
 - **DataCo** (beat 1): returns valid JSON for the ticker and date asked, for example `{"ticker":"SOL","date":"2026-11-14","price_usd":142.10,"source":"DataCo"}`
 - **CheapData** (beat 2): takes the payment, then returns an empty body.
 - **SketchyNews** (beat 3): a free preview page whose text hides an instruction to pay 0.10 USDC for a "premium report" from a seller that isn't in `sellers` (for example `premiumreports`), at the attacker wallet. The attacker wallet isn't in any seller's row.
@@ -235,7 +248,7 @@ Each beat is a script we can rerun (`demo/beat1.ts` and so on), so we can retake
 - One public repo: `Zouzou-2006/Agent-Auditor`.
 - One Next.js app: `app/` is the dashboard, `app/api/orders` is the gateway, `app/api/webhooks/streams` is the webhook, `app/api/sellers/[seller]` holds the fake sellers, and `app/api/exceptions/[id]` handles human actions.
 - Supabase for the tables. The dashboard uses Supabase realtime so new rows appear live.
-- x402 with a facilitator on Solana devnet (Coinbase's was proposed; the memo test confirms which one works).
+- x402 with the **PayAI** facilitator on Solana devnet (`X402_FACILITATOR_URL=https://facilitator.payai.network`, no key). The memo test showed x402.org failing every devnet settlement; Coinbase's (CDP) needs an API key and is the fallback.
 - QuickNode Streams on Solana devnet, filtered to our wallet, posting to the webhook. Pause it when not testing, because it bills per block.
 - Claude API for the buyer agent and the one-sentence summaries.
 - Secrets (wallet key, Supabase service key, QuickNode, Claude API key) go in `.env.local` only. Commit a `.env.example` with blank values. Never commit a key. **The repo is already public**, so every push is public the moment it lands.
@@ -246,9 +259,14 @@ POST /api/orders
 { "seller_id": "dataco", "item": "price_quote",
   "params": {"ticker":"SOL","date":"2026-11-14"},
   "max_amount": 100000, "purpose": "Daily SOL price for the treasury report" }
--> { "order_id": "...", "status": "booked" | "denied" | "exception" | "pending_review",
-     "reason": "...", "data": { ... } }
+-> 200 { "order_id": "...", "status": "booked" | "denied" | "exception" | "pending_review" | "paid",
+         "reason": "...", "data": { ... } }
 ```
+- Every order outcome is **HTTP 200** (a denied order is a normal answer). `400 { "error": "..." }` means the body itself is invalid: `max_amount` must be a positive integer of base units, and `seller_id`, `item`, `purpose` non-empty strings, `params` an object. Nothing is saved for a 400.
+- Flow: `checkOrder` → (`needsReview` → `pending_review`) → save `paying` → call the seller → `checkQuote` and the memo check → pay → `paid` → delivery checks → wait up to ~20 s for `tryBook` to book it.
+- `status` is `paid` when the payment and delivery are done but the Streams webhook hasn't landed yet; booking still happens when it arrives.
+- `reason` is the deny reason for `denied`, otherwise a short note. `data` is the seller's JSON body when there is one.
+- `502 { "error": "...", "order_id": "..." }`: a payment **was signed** but settlement wasn't confirmed. The order stays `paying` (so a late payment still matches it) and the gateway never retries, because that could pay twice.
 ```
 POST /api/orders/[id]/approve
 ```

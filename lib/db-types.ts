@@ -7,7 +7,8 @@
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
 export type SellerStatus = "approved" | "blocked";
-export type OrderStatus = "pending_review" | "denied" | "paid" | "booked" | "exception";
+/** `paying`: saved by the gateway before it signs (migration 0002; SPEC.md section 0.18). */
+export type OrderStatus = "pending_review" | "denied" | "paying" | "paid" | "booked" | "exception";
 export type ExceptionType =
   | "no_order"
   | "wallet_mismatch"

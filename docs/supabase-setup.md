@@ -9,6 +9,8 @@ project (it's safe to re-run). It doesn't seed any sellers: Fabi adds those.
 2. Left sidebar: **SQL Editor** → **New query**.
 3. Paste the whole of `supabase/migrations/0001_init.sql` and click **Run**.
    Expected result: "Success. No rows returned."
+   Then do the same with `supabase/migrations/0002_order_status_paying.sql` (adds the `paying` order status).
+   Run them in number order; both are safe to re-run.
 4. Run the verification queries below.
 
 Then put the keys in your own `.env.local` (never commit them):
