@@ -130,24 +130,25 @@ The rules live in `config/rules.json`, not on a screen. Every rule is a hard yes
 
 ```json
 {
-  "network": "solana-devnet",
+  "network": "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
   "asset": "USDC",
+  "usdc_mint": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
   "max_per_purchase": 1000000,
   "max_per_day": 5000000,
   "human_review_over": 500000
 }
 ```
-The asset is identified by the devnet USDC mint `4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU`.
+`network` is the Solana devnet ID exactly as x402 quotes send it. Rule 6 compares `quote.network` to `network` and `quote.asset` to `usdc_mint` (the devnet USDC mint), so the seller's 402 quote must send the mint address as its asset, not the word "USDC".
 
 **Default deny:** anything not explicitly allowed is denied, including an unknown seller, item, network or token.
 
 An order is denied if any of these is true:
-1. The seller isn't in `sellers`, or its status is `blocked`.
+1. The seller isn't in `sellers`, or its status isn't exactly `approved` (`blocked` or anything else).
 2. `max_amount` is over `max_per_purchase` ($1.00).
 3. Today's paid total plus this order would go over `max_per_day` ($5.00).
 4. The seller's quote amount is over the order's `max_amount`.
 5. The seller's quote wallet isn't that seller's `wallet`.
-6. The seller's quote isn't in `asset` on `network` (USDC on Solana devnet).
+6. The seller's quote `asset` isn't `usdc_mint`, or its `network` isn't `network` (USDC on Solana devnet).
 
 **Functions (`lib/rules.ts`, owned by Cooper).** They never touch the database. The gateway looks up what they need and passes it in.
 - `checkOrder(order, seller, todaySpent)` runs rules 1–3 **before** the gateway contacts the seller. `seller` is the row from `sellers`, or `null` if that seller isn't in the table.
@@ -162,7 +163,7 @@ An order is denied if any of these is true:
 | Rule | Reason |
 | --- | --- |
 | 1 (seller not in table) | `seller not approved` |
-| 1 (status `blocked`) | `seller blocked` |
+| 1 (status not `approved`) | `seller blocked` |
 | 2 | `over per-purchase limit` |
 | 3 | `over daily limit` |
 | 4 | `quote over max` |
