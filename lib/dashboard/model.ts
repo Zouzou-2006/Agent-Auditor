@@ -178,6 +178,19 @@ export interface TrailStep {
   detail: string;
 }
 
+/**
+ * Decision provenance for each audit-trail step: which component decided it and how. Every step is
+ * deterministic code or on-chain data; only the one-line summary is AI-written, and it never decides.
+ */
+export const STEP_PROVENANCE: Record<TrailStep["key"], { source: string; basis: "deterministic" | "on-chain" | "human" }> = {
+  rules: { source: "Rule engine · config/rules.json", basis: "deterministic" },
+  review: { source: "Human approval", basis: "human" },
+  quote: { source: "Seller's x402 quote · gateway checks", basis: "deterministic" },
+  payment: { source: "Solana devnet · QuickNode Streams", basis: "on-chain" },
+  delivery: { source: "Delivery checks · plain code", basis: "deterministic" },
+  booking: { source: "Booking · double-entry ledger", basis: "deterministic" },
+};
+
 export interface OrderTrail {
   order: OrderRow;
   seller: SellerRow | null;

@@ -296,12 +296,25 @@ POST /api/exceptions/[id]
 **Dashboard copilot (read-only):**
 ```
 POST /api/assistant
-{ "messages": [{ "role": "user" | "assistant", "content": "..." }] }   (ends with a user message)
+{ "messages": [{ "role": "user" | "assistant", "content": "..." }],      (ends with a user message)
+  "context": { "section": "orders", "order_id": "...", "exception_id": "..." } }   (optional)
 -> 200, streamed newline-delimited JSON:
-   {"t":"text","v":"..."} | {"t":"tool","v":"<tool name>"} | {"t":"error","v":"..."} | {"t":"done"}
+   {"t":"text","v":"..."} | {"t":"tool","v":"<tool name>","a":"<order_id, get_order only>"}
+   | {"t":"error","v":"..."} | {"t":"done"}
 ```
 - Answers questions about the six tables with Claude. Its tools only read, from a snapshot loaded with the anon key (RLS: SELECT only), so it can't pay, approve, block or change anything. The dashboard buttons stay the only way to act.
+- `context` is what the user is looking at, so "this order" works. `a` lets the dashboard link to the order's audit trail.
 - `400 { "error": "..." }` for a bad body, `503` if `ANTHROPIC_API_KEY` isn't set.
+
+**AI summaries (the one-sentence "why" in sections 1 and 3):**
+```
+POST /api/summaries
+{ "order_id": "..." }   (optional: one order; otherwise up to 8 orders and 8 exceptions)
+-> 200 { "orders": <n written>, "exceptions": <n written> }
+```
+- Writes **only** `orders.summary` / `exceptions.summary`, and only where it is still null, so it never overwrites a summary or touches a status. Skips orders still `paying`.
+- Claude gets only facts built from the saved rows (the audit trail). It explains a decision; it never makes one.
+- `400` for a bad `order_id`, `503` without `ANTHROPIC_API_KEY`, `500 { "error": "internal error" }`.
 
 ## 11. Who owns what
 

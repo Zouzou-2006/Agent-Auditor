@@ -25,6 +25,13 @@ const paths: Record<string, ReactNode> = {
   ban: <path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM5.6 5.6l12.8 12.8" />,
   book: <path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2zM19 19v2H6" />,
   external: <path d="M14 4h6v6M20 4l-9 9M18 14v6H4V6h6" />,
+  lock: <path d="M6 11h12v10H6zM8.5 11V8a3.5 3.5 0 0 1 7 0v3" />,
+  command: <path d="M9 6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3z" />,
+  arrow: <path d="M5 12h14M13 6l6 6-6 6" />,
+  bolt: <path d="M13 3 5 14h6l-1 7 8-11h-6z" />,
+  user: <path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0" />,
+  wallet: <path d="M4 7h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a1 1 0 0 1-1-1zM4 7l11-3v3M16 13h1" />,
+  layers: <path d="M12 3 3 8l9 5 9-5-9-5zM3 13l9 5 9-5M3 17.5l9 5 9-5" />,
 };
 
 export function Icon({ name, className }: { name: keyof typeof paths | string; className?: string }) {
@@ -57,8 +64,8 @@ export const ORDER_TONE_VAR: Record<OrderStatus, string> = {
 
 function Badge({ tone, children }: { tone: string; children: ReactNode }) {
   return (
-    <span className="badge">
-      <span className={`dot dot-${tone}`} />
+    <span className={`badge tone-${tone}`}>
+      <span className="dot" />
       {children}
     </span>
   );
@@ -104,9 +111,12 @@ export function fullTime(iso: string | null): string {
   return iso ? new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "medium" }) : "—";
 }
 
-export function Empty({ title, children }: { title: string; children?: ReactNode }) {
+export function Empty({ title, children, icon = "layers" }: { title: string; children?: ReactNode; icon?: string }) {
   return (
     <div className="empty">
+      <span className="glyph">
+        <Icon name={icon} />
+      </span>
       <strong>{title}</strong>
       {children && <span>{children}</span>}
     </div>

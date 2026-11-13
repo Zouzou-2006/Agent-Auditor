@@ -124,7 +124,13 @@ export default function Orders({ data, now, loading, fresh, filter, onFilter, on
                     <StatusBadge status={o.status} />
                   </td>
                   <td style={{ maxWidth: 260 }}>
-                    {o.deny_reason ? <span className="reason">{o.deny_reason}</span> : <span className="cell-sub">{o.summary ?? o.purpose}</span>}
+                    {o.deny_reason ? (
+                      <span className="reason">{o.deny_reason}</span>
+                    ) : o.summary ? (
+                      <span className="cell-sub"><span className="ai-tag">AI</span>{o.summary}</span>
+                    ) : (
+                      <span className="cell-sub">{o.purpose}</span>
+                    )}
                   </td>
                   <td className="right">
                     {o.status === "pending_review" && (

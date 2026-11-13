@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ExceptionRow, OrderRow } from "@/lib/db-types";
-import { formatUsd, orderTrail, type DashboardData } from "@/lib/dashboard/model";
+import { formatUsd, orderTrail, STEP_PROVENANCE, type DashboardData } from "@/lib/dashboard/model";
 import { AddrLink, ExceptionStatusBadge, fullTime, Icon, SellerStatusBadge, SeverityBadge, StatusBadge, TxLink } from "./ui";
 
 interface Props {
@@ -11,11 +11,14 @@ interface Props {
   onClose: () => void;
   onApprove: (order: OrderRow) => void;
   onException: (exc: ExceptionRow, action: "approve" | "block_seller") => void;
+  onAsk: (order: OrderRow) => void;
+  onSummarize: (order: OrderRow) => Promise<void>;
 }
 
 const STEP_ICON = { done: "check", failed: "x", waiting: "clock", skipped: "minus" } as const;
 
-export default function OrderDrawer({ order, data, onClose, onApprove, onException }: Props) {
+export default function OrderDrawer({ order, data, onClose, onApprove, onException, onAsk, onSummarize }: Props) {
+  const [summarizing, setSummarizing] = useState(false);
   // Re-read the order from live data so the drawer updates when its status changes.
   const live = data.orders.find((o) => o.order_id === order.order_id) ?? order;
   const t = useMemo(() => orderTrail(live, data), [live, data]);
@@ -56,7 +59,11 @@ export default function OrderDrawer({ order, data, onClose, onApprove, onExcepti
               {live.order_id} {copied ? "· copied" : ""}
             </button>
           </div>
-          <button ref={closeRef} className="btn btn-ghost btn-sm" style={{ marginLeft: "auto" }} onClick={onClose} aria-label="Close">
+          <button className="btn btn-sm" style={{ marginLeft: "auto" }} onClick={() => onAsk(live)}>
+            <Icon name="spark" />
+            Ask copilot
+          </button>
+          <button ref={closeRef} className="btn btn-ghost btn-sm" onClick={onClose} aria-label="Close">
             <Icon name="close" />
           </button>
         </div>
@@ -71,27 +78,58 @@ export default function OrderDrawer({ order, data, onClose, onApprove, onExcepti
             </div>
           )}
 
-          {(live.summary || t.exception?.summary) && (
-            <div>
-              <h3>Why (AI summary)</h3>
+          <div>
+            <h3>
+              Why
+              <span className="ai-tag" title="Written by Claude from the saved facts. It explains the decision; it never makes it."><Icon name="spark" />AI-written</span>
+            </h3>
+            {live.summary || t.exception?.summary ? (
               <div className="summary">{live.summary ?? t.exception?.summary}</div>
-            </div>
-          )}
+            ) : live.status === "paying" ? (
+              <div className="cell-sub">A summary is written once the payment settles.</div>
+            ) : (
+              <button
+                className="btn btn-sm"
+                disabled={summarizing}
+                onClick={async () => {
+                  setSummarizing(true);
+                  try {
+                    await onSummarize(live);
+                  } finally {
+                    setSummarizing(false);
+                  }
+                }}
+              >
+                {summarizing ? <Icon name="refresh" className="spin" /> : <Icon name="spark" />}
+                {summarizing ? "Writing summary…" : "Generate one-line summary"}
+              </button>
+            )}
+          </div>
 
           <div>
             <h3>Audit trail</h3>
             <ol className="trail">
-              {t.steps.map((s) => (
-                <li key={s.key} className={s.state}>
-                  <span className="node" aria-label={s.state}>
-                    <Icon name={STEP_ICON[s.state]} />
-                  </span>
-                  <div>
-                    <div className="t-label">{s.label}</div>
-                    <div className="t-detail">{s.detail}</div>
-                  </div>
-                </li>
-              ))}
+              {t.steps.map((s) => {
+                const p = STEP_PROVENANCE[s.key];
+                return (
+                  <li key={s.key} className={s.state}>
+                    <span className="node" aria-label={s.state}>
+                      <Icon name={STEP_ICON[s.state]} />
+                    </span>
+                    <div>
+                      <div className="t-row">
+                        <span className="t-label">{s.label}</span>
+                        <span className={`prov ${p.basis}`} title={`Decided by: ${p.source}`}>
+                          <i />
+                          {p.basis}
+                        </span>
+                      </div>
+                      <div className="t-detail">{s.detail}</div>
+                      <div className="cell-sub" style={{ fontSize: 11 }}>{p.source}</div>
+                    </div>
+                  </li>
+                );
+              })}
             </ol>
           </div>
 
