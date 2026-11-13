@@ -81,3 +81,14 @@ describe("migration enums match SPEC.md section 4 and lib/db-types.ts", () => {
     expect(sql.split(tables).length - 1).toBe(2);
   });
 });
+
+describe("migration 0002 adds the paying status (SPEC.md 0.18)", () => {
+  const sql = readFileSync("supabase/migrations/0002_order_status_paying.sql", "utf8");
+
+  it("replaces orders_status_check with the six statuses", () => {
+    expect(sql).toContain("drop constraint if exists orders_status_check");
+    expect(sql).toContain(
+      "check (status in ('pending_review', 'denied', 'paying', 'paid', 'booked', 'exception'))",
+    );
+  });
+});
