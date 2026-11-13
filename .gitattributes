@@ -1,0 +1,2 @@
+# Store text files with LF in the repo so diffs stay clean across Windows/macOS/Linux.
+* text=auto eol=lf

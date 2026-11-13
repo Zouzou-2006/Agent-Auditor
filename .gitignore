@@ -1,0 +1,40 @@
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+
+# testing
+/coverage
+
+# next.js / build output
+/.next/
+/out/
+/build
+/dist
+*.tsbuildinfo
+next-env.d.ts
+
+# env files: everything except the blank template
+.env*
+!.env.example
+
+# wallets, keypairs and other secrets (this repo is PUBLIC)
+*keypair*.json
+*-wallet.json
+wallets/
+id.json
+*.pem
+*.key
+*.p12
+*.secret
+secrets/
+.secrets/
+
+# local Claude Code settings (shared settings.json IS committed)
+.claude/settings.local.json
+
+# misc
+.DS_Store
+Thumbs.db
+npm-debug.log*
+.vercel
