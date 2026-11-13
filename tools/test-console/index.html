@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent Auditor Console</title>
+<style>
+:root{--bg:#0b0e14;--panel:#121722;--panel2:#171d2b;--line:#232b3d;--text:#e6e9f0;--dim:#8a93a8;--accent:#7c9cff;--green:#3ddc97;--red:#ff6b81;--amber:#ffb454;--blue:#5cc8ff;--violet:#b18cff}
+*{box-sizing:border-box}
+body{margin:0;background:radial-gradient(1200px 600px at 10% -10%,#1a2240 0%,transparent 60%),var(--bg);color:var(--text);font:14px/1.45 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;min-height:100vh}
+header{display:flex;align-items:center;gap:14px;padding:18px 24px;border-bottom:1px solid var(--line);position:sticky;top:0;background:rgba(11,14,20,.85);backdrop-filter:blur(10px);z-index:5}
+.logo{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--accent),var(--violet));display:grid;place-items:center;font-weight:800;color:#0b0e14}
+h1{font-size:17px;margin:0;letter-spacing:.2px}
+.sub{color:var(--dim);font-size:12px}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:999px;font-size:12px;font-weight:600;border:1px solid var(--line);background:var(--panel2);white-space:nowrap}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--dim)}
+.up .dot{background:var(--green);box-shadow:0 0 10px var(--green)} .down .dot{background:var(--red);box-shadow:0 0 10px var(--red)}
+.spacer{flex:1}
+main{display:grid;grid-template-columns:360px 1fr;gap:18px;padding:18px 24px;max-width:1600px;margin:0 auto}
+@media(max-width:1000px){main{grid-template-columns:1fr;padding:16px}}
+.card{background:linear-gradient(180deg,var(--panel),#0f131c);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:18px}
+.card h2{font-size:13px;text-transform:uppercase;letter-spacing:.9px;color:var(--dim);margin:0 0 12px;display:flex;align-items:center;gap:8px}
+.card h2 .count{color:var(--text);background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:0 6px;font-size:11px}
+.kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:18px}
+@media(max-width:1000px){.kpis{grid-template-columns:repeat(2,1fr)}}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px}
+.kpi .v{font-size:24px;font-weight:750;font-variant-numeric:tabular-nums}
+.kpi .l{color:var(--dim);font-size:12px}
+.wallets{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:18px}
+.wallet{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+.wallet .n{font-weight:650}.wallet .a{font-family:ui-monospace,Consolas,monospace;font-size:11px;color:var(--dim)}
+.wallet .b{font-size:18px;font-weight:700;margin-top:4px;font-variant-numeric:tabular-nums}
+.warn{color:var(--amber);font-size:12px}
+label{display:block;font-size:12px;color:var(--dim);margin:10px 0 4px}
+input,textarea,select{width:100%;background:#0c1018;border:1px solid var(--line);color:var(--text);border-radius:9px;padding:8px 10px;font:13px ui-monospace,Consolas,monospace}
+textarea{min-height:56px;resize:vertical}
+button{cursor:pointer;border:1px solid var(--line);background:var(--panel2);color:var(--text);border-radius:9px;padding:8px 12px;font-weight:600;font-size:13px;transition:.15s}
+button:hover{border-color:var(--accent);transform:translateY(-1px)}
+button:disabled{opacity:.5;cursor:wait;transform:none}
+.primary{background:linear-gradient(135deg,var(--accent),var(--violet));color:#0b0e14;border:0}
+.presets{display:flex;flex-wrap:wrap;gap:6px}
+.presets button{font-size:12px;padding:6px 9px}
+.agents{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.log{max-height:340px;overflow:auto;font:12px ui-monospace,Consolas,monospace;white-space:pre-wrap;word-break:break-word}
+.log .e{border-left:3px solid var(--line);padding:6px 10px;margin-bottom:8px;background:#0c1018;border-radius:0 8px 8px 0}
+.log .ok{border-color:var(--green)}.log .bad{border-color:var(--red)}.log .mid{border-color:var(--amber)}
+.log .t{color:var(--dim)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;color:var(--dim);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.6px;padding:6px 8px;border-bottom:1px solid var(--line)}
+td{padding:8px;border-bottom:1px solid #1a2130;vertical-align:top}
+tr.new td{animation:flash 1.6s ease-out}
+@keyframes flash{from{background:rgba(124,156,255,.18)}to{background:transparent}}
+.mono{font-family:ui-monospace,Consolas,monospace;font-size:12px}
+.dim{color:var(--dim)}
+.scroll{overflow-x:auto}
+.s-booked{color:var(--green);border-color:rgba(61,220,151,.4)}.s-paid{color:var(--blue);border-color:rgba(92,200,255,.4)}
+.s-paying{color:var(--amber);border-color:rgba(255,180,84,.4)}.s-denied{color:var(--red);border-color:rgba(255,107,129,.4)}
+.s-pending_review{color:var(--violet);border-color:rgba(177,140,255,.4)}.s-exception{color:var(--red);border-color:rgba(255,107,129,.6);background:rgba(255,107,129,.1)}
+.s-open{color:var(--amber)}.s-critical{color:var(--red)}.s-high{color:var(--amber)}.s-medium{color:var(--blue)}
+.s-true{color:var(--green)}.s-false{color:var(--red)}
+.empty{color:var(--dim);font-style:italic;padding:10px 0}
+a{color:var(--accent)}
+.row-actions{display:flex;gap:6px}.row-actions button{padding:4px 8px;font-size:12px}
+.err{color:var(--red);font-size:12px}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">A</div>
+  <div><h1>Agent Auditor test console</h1><div class="sub">Local testing tool · Solana devnet · live from Supabase</div></div>
+  <div class="spacer"></div>
+  <span class="pill" id="gw"><span class="dot"></span><span>gateway</span></span>
+  <span class="pill" id="tick"><span class="dot"></span><span>live</span></span>
+</header>
+
+<main>
+  <aside>
+    <div class="card">
+      <h2>Place a test order</h2>
+      <div class="presets" id="presets"></div>
+      <label>seller_id</label><input id="f-seller" value="dataco">
+      <label>item</label><input id="f-item" value="price_quote">
+      <label>params (JSON)</label><textarea id="f-params"></textarea>
+      <label>max_amount (USDC base units)</label><input id="f-max" value="100000">
+      <label>purpose</label><input id="f-purpose" value="Daily SOL price for the treasury report">
+      <div style="display:flex;gap:8px;margin-top:12px;align-items:center">
+        <button class="primary" id="send">POST /api/orders</button><span class="dim" id="f-usd"></span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Run the buyer agent (Claude)</h2>
+      <div class="agents">
+        <button data-beat="beat1">Beat 1 · clean buy</button>
+        <button data-beat="beat2">Beat 2 · empty delivery</button>
+        <button data-beat="beat3">Beat 3 · injection</button>
+        <button data-beat="beat4">Beat 4 · stolen key</button>
+      </div>
+      <div class="sub" style="margin-top:8px">Each run calls Claude (about a cent) and may pay devnet USDC.</div>
+    </div>
+
+    <div class="card">
+      <h2>Activity</h2>
+      <div class="log" id="log"><div class="empty">Responses appear here.</div></div>
+    </div>
+  </aside>
+
+  <section>
+    <div class="kpis" id="kpis"></div>
+    <div class="wallets" id="wallets"></div>
+    <div class="card"><h2>Orders <span class="count" id="c-orders">0</span></h2><div class="scroll" id="orders"></div></div>
+    <div class="card"><h2>Exceptions <span class="count" id="c-exceptions">0</span></h2><div class="scroll" id="exceptions"></div></div>
+    <div class="card"><h2>Payments (Streams) <span class="count" id="c-payments">0</span></h2><div class="scroll" id="payments"></div></div>
+    <div class="card"><h2>Deliveries <span class="count" id="c-deliveries">0</span></h2><div class="scroll" id="deliveries"></div></div>
+    <div class="card"><h2>Journal entries <span class="count" id="c-journal_entries">0</span></h2><div class="scroll" id="journal_entries"></div></div>
+    <div class="card"><h2>Sellers</h2><div class="scroll" id="sellers"></div></div>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+// Base units -> "$0.100000" with integer math only.
+const usd = (n) => {
+  if (n === null || n === undefined || n === "") return "—";
+  const s = String(BigInt(n)).padStart(7, "0");
+  return "$" + s.slice(0, -6) + "." + s.slice(-6, -4) + (s.slice(-4) === "0000" ? "" : s.slice(-4));
+};
+const short = (s, n = 6) => (s ? (String(s).length > 2 * n + 1 ? String(s).slice(0, n) + "…" + String(s).slice(-n) : String(s)) : "—");
+const tx = (s) => (s ? `<a class="mono" target="_blank" href="https://explorer.solana.com/tx/${esc(s)}?cluster=devnet">${esc(short(s, 8))}</a>` : "—");
+const addr = (s) => (s ? `<a class="mono" target="_blank" href="https://explorer.solana.com/address/${esc(s)}?cluster=devnet">${esc(short(s))}</a>` : "—");
+const pill = (v) => `<span class="pill s-${esc(v)}">${esc(v)}</span>`;
+const time = (t) => (t ? new Date(t).toLocaleTimeString() : "—");
+const today = () => new Date().toISOString().slice(0, 10);
+
+const PRESETS = [
+  ["Clean DataCo buy", { seller_id: "dataco", item: "price_quote", params: { ticker: "SOL", date: today() }, max_amount: 100000, purpose: "Daily SOL price for the treasury report" }],
+  ["Needs review ($0.60)", { seller_id: "dataco", item: "price_quote", params: { ticker: "SOL", date: today() }, max_amount: 600000, purpose: "Large quote that needs a human" }],
+  ["Over $1 limit", { seller_id: "dataco", item: "price_quote", params: { ticker: "SOL", date: today() }, max_amount: 1500000, purpose: "Too expensive" }],
+  ["Unknown seller", { seller_id: "premiumreports", item: "premium_report", params: {}, max_amount: 100000, purpose: "Injected instruction" }],
+  ["CheapData", { seller_id: "cheapdata", item: "price_quote", params: { ticker: "SOL", date: today() }, max_amount: 100000, purpose: "Cheaper SOL price" }],
+  ["Bad body (400)", { seller_id: "dataco", item: "price_quote", params: {}, max_amount: -5, purpose: "x" }],
+];
+function fill(o) {
+  $("f-seller").value = o.seller_id; $("f-item").value = o.item; $("f-params").value = JSON.stringify(o.params);
+  $("f-max").value = o.max_amount; $("f-purpose").value = o.purpose; showUsd();
+}
+function showUsd() { try { $("f-usd").textContent = /^\d+$/.test($("f-max").value) ? usd($("f-max").value) : ""; } catch { $("f-usd").textContent = ""; } }
+$("f-max").addEventListener("input", showUsd);
+PRESETS.forEach(([name, o]) => { const b = document.createElement("button"); b.textContent = name; b.onclick = () => fill(o); $("presets").append(b); });
+fill(PRESETS[0][1]);
+
+function log(title, http, body, ms) {
+  if ($("log").querySelector(".empty")) $("log").innerHTML = "";
+  const cls = http >= 200 && http < 300 ? "ok" : http >= 400 && http < 500 ? "mid" : "bad";
+  let pretty = body;
+  try { pretty = JSON.stringify(JSON.parse(body), null, 2); } catch {}
+  const d = document.createElement("div");
+  d.className = "e " + cls;
+  d.innerHTML = `<div class="t">${esc(new Date().toLocaleTimeString())} · ${esc(title)} · HTTP ${esc(http)}${ms ? " · " + esc(ms) + " ms" : ""}</div>${esc(pretty)}`;
+  $("log").prepend(d);
+}
+async function post(url, body) { const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body }); return r.json(); }
+async function busy(btn, fn) { btn.disabled = true; const t = btn.textContent; btn.textContent = "Working…"; try { await fn(); } finally { btn.disabled = false; btn.textContent = t; refresh(); } }
+
+$("send").onclick = () => busy($("send"), async () => {
+  let params;
+  try { params = JSON.parse($("f-params").value || "{}"); } catch { return log("params is not valid JSON", 0, ""); }
+  const max = /^-?\d+$/.test($("f-max").value.trim()) ? Number($("f-max").value.trim()) : $("f-max").value;
+  const body = { seller_id: $("f-seller").value, item: $("f-item").value, params, max_amount: max, purpose: $("f-purpose").value };
+  const r = await post("/order", JSON.stringify(body));
+  log(`POST /api/orders (${body.seller_id})`, r.http, r.body, r.ms);
+});
+document.querySelectorAll("[data-beat]").forEach((b) => (b.onclick = () => busy(b, async () => {
+  const r = await post("/agent/" + b.dataset.beat, "{}");
+  log(`buyer agent ${b.dataset.beat} (exit ${r.code})`, r.code === 0 ? 200 : 500, r.output);
+})));
+window.approveOrder = (id, btn) => busy(btn, async () => { const r = await post("/approve/" + id, "{}"); log("approve " + short(id), r.http, r.body, r.ms); });
+window.exceptionAction = (id, action, btn) => busy(btn, async () => { const r = await post("/exception/" + id, JSON.stringify({ action })); log(`${action} ${short(id)}`, r.http, r.body, r.ms); });
+
+function grid(el, rows, cols, keyFn) {
+  $("c-" + el) && ($("c-" + el).textContent = Array.isArray(rows) ? rows.length : "!");
+  if (!Array.isArray(rows)) return ($(el).innerHTML = `<div class="err">${esc(rows?.error ?? "failed to load")}</div>`);
+  if (!rows.length) return ($(el).innerHTML = `<div class="empty">No rows yet.</div>`);
+  const prev = seen[el] || new Set(); const now = new Set();
+  $(el).innerHTML = `<table><tr>${cols.map((c) => `<th>${c[0]}</th>`).join("")}</tr>${rows.map((r) => {
+    const k = keyFn(r); now.add(k);
+    return `<tr class="${seen[el] && !prev.has(k) ? "new" : ""}">${cols.map((c) => `<td>${c[1](r)}</td>`).join("")}</tr>`;
+  }).join("")}</table>`;
+  seen[el] = now;
+}
+const seen = {};
+
+function render(s) {
+  $("gw").className = "pill " + (s.gatewayUp ? "up" : "down");
+  $("gw").lastElementChild.textContent = "gateway " + (s.gatewayUp ? "up" : "down") + " · " + s.gateway.replace(/^https?:\/\//, "");
+  const orders = Array.isArray(s.orders) ? s.orders : [];
+  const ex = Array.isArray(s.exceptions) ? s.exceptions : [];
+  const pays = Array.isArray(s.payments) ? s.payments : [];
+  const spentToday = pays.filter((p) => p.block_time && p.block_time.slice(0, 10) === today()).reduce((a, p) => a + BigInt(p.amount), 0n);
+  const kp = [
+    ["Orders", orders.length],
+    ["Booked", orders.filter((o) => o.status === "booked").length],
+    ["Blocked before payment", orders.filter((o) => o.status === "denied").length],
+    ["Open exceptions", ex.filter((e) => e.status === "open").length],
+    ["Paid today (on-chain)", usd(spentToday)],
+  ];
+  $("kpis").innerHTML = kp.map(([l, v]) => `<div class="kpi"><div class="v">${esc(v)}</div><div class="l">${esc(l)}</div></div>`).join("");
+  $("wallets").innerHTML = (s.wallets || []).map((w) => `<div class="wallet"><div class="n">${esc(w.label)}</div><div class="a">${addr(w.owner)}</div>
+    <div class="b">${w.amount === null ? "—" : esc(usd(w.amount)) + " USDC"}</div>
+    <div class="dim">${w.lamports === null || w.lamports === undefined ? "" : esc((w.lamports / 1e9).toFixed(3)) + " SOL"}</div>
+    ${w.account === null ? `<div class="warn">No USDC token account: payments to it fail</div>` : ""}${w.error ? `<div class="err">${esc(w.error)}</div>` : ""}</div>`).join("");
+
+  grid("orders", s.orders, [
+    ["Created", (o) => `<span class="dim">${esc(time(o.created_at))}</span>`],
+    ["Order", (o) => `<span class="mono" title="${esc(o.order_id)}">${esc(short(o.order_id, 4))}</span>`],
+    ["Seller", (o) => esc(o.seller_id)],
+    ["Item", (o) => `${esc(o.item)}<div class="dim mono">${esc(JSON.stringify(o.params))}</div>`],
+    ["Max", (o) => esc(usd(o.max_amount))],
+    ["Quote", (o) => `${esc(usd(o.quote_amount))}<div>${addr(o.quote_wallet)}</div>`],
+    ["Status", (o) => pill(o.status)],
+    ["Reason / summary", (o) => `${o.deny_reason ? `<div style="color:var(--red)">${esc(o.deny_reason)}</div>` : ""}<div class="dim">${esc(o.summary || o.purpose)}</div>`],
+    ["", (o) => o.status === "pending_review" ? `<div class="row-actions"><button onclick="approveOrder('${esc(o.order_id)}',this)">Approve</button></div>` : ""],
+  ], (o) => o.order_id + o.status);
+
+  grid("exceptions", s.exceptions, [
+    ["Created", (e) => `<span class="dim">${esc(time(e.created_at))}</span>`],
+    ["Type", (e) => esc(e.type)],
+    ["Severity", (e) => pill(e.severity)],
+    ["Order", (e) => `<span class="mono">${esc(short(e.order_id, 4))}</span>`],
+    ["Tx", (e) => tx(e.tx_signature)],
+    ["Summary", (e) => `<span class="dim">${esc(e.summary)}</span>`],
+    ["Status", (e) => pill(e.status)],
+    ["", (e) => e.status === "open" ? `<div class="row-actions"><button onclick="exceptionAction('${esc(e.exception_id)}','approve',this)">Approve</button><button onclick="exceptionAction('${esc(e.exception_id)}','block_seller',this)">Block seller</button></div>` : ""],
+  ], (e) => e.exception_id + e.status);
+
+  grid("payments", s.payments, [
+    ["Block time", (p) => `<span class="dim">${esc(time(p.block_time))}</span>`],
+    ["Tx", (p) => tx(p.tx_signature)],
+    ["From → to", (p) => `${addr(p.from_wallet)} → ${addr(p.to_wallet)}`],
+    ["Amount", (p) => esc(usd(p.amount))],
+    ["Memo", (p) => `<span class="mono">${esc(short(p.memo, 8))}</span>`],
+    ["Matched order", (p) => (p.order_id ? `<span class="mono">${esc(short(p.order_id, 4))}</span>` : `<span style="color:var(--red)">no match</span>`)],
+  ], (p) => p.tx_signature);
+
+  grid("deliveries", s.deliveries, [
+    ["Received", (d) => `<span class="dim">${esc(time(d.received_at))}</span>`],
+    ["Order", (d) => `<span class="mono">${esc(short(d.order_id, 4))}</span>`],
+    ["Checks", (d) => Object.entries(d.checks || {}).map(([k, v]) => `<span class="pill s-${v}">${esc(k)}</span>`).join(" ")],
+    ["Passed", (d) => pill(String(d.passed))],
+    ["Body", (d) => `<span class="mono dim">${esc(String(d.body).slice(0, 160))}</span>`],
+  ], (d) => d.order_id + d.received_at);
+
+  grid("journal_entries", s.journal_entries, [
+    ["Date", (j) => esc(j.entry_date)],
+    ["Debit", (j) => esc(j.debit_account)],
+    ["Credit", (j) => esc(j.credit_account)],
+    ["Amount", (j) => esc(usd(j.amount))],
+    ["Description", (j) => esc(j.description)],
+    ["Tx", (j) => tx(j.tx_signature)],
+  ], (j) => j.entry_id);
+
+  grid("sellers", s.sellers, [
+    ["Seller", (r) => `${esc(r.name)} <span class="dim mono">${esc(r.seller_id)}</span>`],
+    ["Endpoint", (r) => `<span class="mono dim">${esc(r.url)}</span>`],
+    ["Wallet", (r) => addr(r.wallet)],
+    ["Status", (r) => pill(r.status === "approved" ? "booked" : "denied").replace(/>[^<]+</, ">" + esc(r.status) + "<")],
+  ], (r) => r.seller_id + r.status);
+}
+
+let inflight = false;
+async function refresh() {
+  if (inflight) return; inflight = true;
+  try {
+    const s = await (await fetch("/state")).json();
+    render(s); $("tick").className = "pill up"; $("tick").lastElementChild.textContent = "live · " + new Date().toLocaleTimeString();
+  } catch { $("tick").className = "pill down"; $("tick").lastElementChild.textContent = "console offline"; }
+  finally { inflight = false; }
+}
+refresh(); setInterval(refresh, 3000);
+</script>
+</body>
+</html>
