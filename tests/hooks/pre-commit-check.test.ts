@@ -1,7 +1,8 @@
 import { spawnSync } from "node:child_process";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { analyzeCommand, normalizeCwd } from "../../.claude/hooks/pre-commit-check.mjs";
+import { analyzeCommand, normalizeCwd, repoRoot } from "../../.claude/hooks/pre-commit-check.mjs";
 
 const HOOK = fileURLToPath(new URL("../../.claude/hooks/pre-commit-check.mjs", import.meta.url));
 
@@ -34,7 +35,29 @@ describe("analyzeCommand: ignores everything else", () => {
     "git add package.json",
     "git push -u origin main",
   ])("%s", (command) => {
-    expect(analyzeCommand(command)).toEqual({ isCommit: false, noVerify: false });
+    expect(analyzeCommand(command)).toEqual({ isCommit: false, noVerify: false, commitDir: null });
+  });
+});
+
+describe("analyzeCommand: finds the directory the commit runs in", () => {
+  it.each([
+    ["git commit -m x", null],
+    ["cd ../other-worktree && git commit -m x", "../other-worktree"],
+    ['cd "c:/Users/me/repo-b" && git commit -m x', "c:/Users/me/repo-b"],
+    ["git -C ../repo-b commit -m x", "../repo-b"],
+    ["cd parent && git -C child commit -m x", "parent/child".replace("/", path.sep)],
+    ["Set-Location ..\\repo-b; git commit -m x", "..\\repo-b"],
+    ["cd a && cd b && git commit -m x", ["a", "b"].join(path.sep)],
+    ["git status && git commit -m x", null],
+  ])("%s -> %s", (command, expected) => {
+    expect(analyzeCommand(command).commitDir).toBe(expected);
+  });
+});
+
+describe("repoRoot", () => {
+  it("resolves the repo root from a subdirectory", () => {
+    const root = repoRoot(fileURLToPath(new URL("../../lib", import.meta.url)));
+    expect(root).toBe(path.resolve(fileURLToPath(new URL("../..", import.meta.url))));
   });
 });
 
