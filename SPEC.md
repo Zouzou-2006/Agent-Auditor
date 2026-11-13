@@ -225,7 +225,7 @@ Denied orders aren't exceptions. No money moved, so the dashboard shows them as 
 
 1. **Clean purchase:** the agent buys a SOL price quote from DataCo. The dashboard shows the order, the payment from the chain, the passed checks and the journal entry.
 2. **Empty delivery:** the agent buys from CheapData, pays and gets nothing, and a `nothing_delivered` exception appears. A human clicks Block Seller. The agent tries CheapData again, and the order is denied: "seller blocked."
-3. **Prompt injection:** the agent reads SketchyNews's preview and files an order to pay the attacker wallet. Denied: "seller not approved." No money moves. (Open, Cooper decides by Saturday's call: recent Claude models may resist the injection. The options are a deliberately naive agent prompt, or having `beat3.ts` file the bad order directly.)
+3. **Prompt injection:** the agent reads SketchyNews's preview and files an order to pay the attacker wallet. Denied: "seller not approved." No money moves. (Decided by Cooper: recent Claude models may resist the injection, so `demo/beat3.ts` files the bad order directly, as a fooled agent would, with no agent involved.)
 4. **Stolen key:** the script pays the attacker wallet directly. Within seconds, Streams delivers the payment and a critical `no_order` exception appears.
 
 Each beat is a script we can rerun (`demo/beat1.ts` and so on), so we can retake the video as many times as needed.
@@ -297,7 +297,7 @@ The recording day and the feature-freeze time get set on Sunday's call. Calls: S
 
 1. **Memo (Nizar):** can x402 on Solana carry our `order_id` in the memo? If not, match on `to_wallet` + `amount` + a 2-minute window after the order.
 2. **Streams on devnet:** does QuickNode Streams support Solana devnet? If not, use a Solana WebSocket subscription, and we lose the Streams bounty.
-3. **Beat 3:** naive agent prompt, or have `beat3.ts` file the bad order directly? (Cooper, by Saturday.)
+3. ~~**Beat 3:** naive agent prompt, or have `beat3.ts` file the bad order directly?~~ Decided: `beat3.ts` files the bad order directly (see section 9).
 
 ## 14. How our Claudes work together
 
