@@ -13,7 +13,7 @@ import { loadDashboardData } from "@/lib/dashboard/load";
 import { getBrowserClient } from "@/lib/db-browser";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 120;
+export const maxDuration = 300; // up to MAX_TURNS streamed Claude calls in one answer
 
 const MODEL = "claude-opus-5-5";
 const MAX_TURNS = 8; // tool round-trips per question

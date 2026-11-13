@@ -11,6 +11,8 @@ import { supabaseMatcherDeps } from "@/lib/streams/matcher-db";
 import { verifyStreamsSignature } from "@/lib/streams/signature";
 
 export const dynamic = "force-dynamic";
+// A block can carry several payments, each matched and booked with database round trips.
+export const maxDuration = 60;
 
 async function readBody(req: Request): Promise<string> {
   const bytes = Buffer.from(await req.arrayBuffer());

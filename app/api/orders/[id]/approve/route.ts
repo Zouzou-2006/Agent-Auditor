@@ -5,7 +5,8 @@ import { gatewayDeps } from "@/lib/gateway/deps";
 import { approveOrder } from "@/lib/gateway/purchase";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 120;
+// Same payment path as POST /api/orders: up to 90 s seller call + settlement + 20 s booking wait.
+export const maxDuration = 300;
 
 type Context = { params: Promise<{ id: string }> };
 

@@ -7,7 +7,10 @@ import { parseOrderRequest } from "@/lib/gateway/validate";
 
 export const dynamic = "force-dynamic";
 // A purchase can take a while: seller call, settlement, then up to ~20 s waiting for booking.
-export const maxDuration = 120;
+// Worst case: seller call up to 90 s (SELLER_TIMEOUT_MS in lib/gateway/pay.ts) + settlement +
+// up to 20 s waiting for booking. 300 s is the Vercel maximum on every plan (Fluid compute), so a
+// payment is never cut off mid-flight.
+export const maxDuration = 300;
 
 export async function POST(req: Request): Promise<Response> {
   let body: unknown;
