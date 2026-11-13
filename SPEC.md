@@ -293,6 +293,16 @@ POST /api/exceptions/[id]
   - `409`: the exception isn't `open` any more (already handled, e.g. a double click), or it's a `no_order` exception, which has no order to book or seller to block (resolving those is "what's next").
   - `500`: anything else, with `{ "error": "internal error" }`. The detail goes to the server log only.
 
+**Dashboard copilot (read-only):**
+```
+POST /api/assistant
+{ "messages": [{ "role": "user" | "assistant", "content": "..." }] }   (ends with a user message)
+-> 200, streamed newline-delimited JSON:
+   {"t":"text","v":"..."} | {"t":"tool","v":"<tool name>"} | {"t":"error","v":"..."} | {"t":"done"}
+```
+- Answers questions about the six tables with Claude. Its tools only read, from a snapshot loaded with the anon key (RLS: SELECT only), so it can't pay, approve, block or change anything. The dashboard buttons stay the only way to act.
+- `400 { "error": "..." }` for a bad body, `503` if `ANTHROPIC_API_KEY` isn't set.
+
 ## 11. Who owns what
 
 - **Nizar:** repo setup, the Supabase tables, the gateway and x402 payments (including `/approve`), the Streams webhook and matcher. Runs the memo test first. Submits.
