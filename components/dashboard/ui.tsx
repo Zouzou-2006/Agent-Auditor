@@ -3,7 +3,7 @@
 
 import { useEffect, useRef, type ReactNode } from "react";
 import type { ExceptionSeverity, ExceptionStatus, OrderStatus, SellerStatus } from "@/lib/db-types";
-import { shortId } from "@/lib/dashboard/model";
+import { explorerAddressUrl, explorerTxUrl, shortId } from "@/lib/dashboard/model";
 
 const paths: Record<string, ReactNode> = {
   overview: <path d="M3 13h4v8H3zM10 9h4v12h-4zM17 4h4v17h-4z" />,
@@ -78,12 +78,10 @@ export const SellerStatusBadge = ({ status }: { status: SellerStatus }) => (
   <Badge tone={status === "approved" ? "good" : "critical"}>{status}</Badge>
 );
 
-const EXPLORER = "https://explorer.solana.com";
-
 export function TxLink({ sig }: { sig: string | null }) {
   if (!sig) return <span className="muted">—</span>;
   return (
-    <a className="mono" href={`${EXPLORER}/tx/${sig}?cluster=devnet`} target="_blank" rel="noreferrer" title={sig} onClick={(e) => e.stopPropagation()}>
+    <a className="mono" href={explorerTxUrl(sig)} target="_blank" rel="noreferrer" title={sig} onClick={(e) => e.stopPropagation()}>
       {shortId(sig, 6)}
     </a>
   );
@@ -92,7 +90,7 @@ export function TxLink({ sig }: { sig: string | null }) {
 export function AddrLink({ addr, label }: { addr: string | null; label?: string }) {
   if (!addr) return <span className="muted">—</span>;
   return (
-    <a className="mono" href={`${EXPLORER}/address/${addr}?cluster=devnet`} target="_blank" rel="noreferrer" title={addr} onClick={(e) => e.stopPropagation()}>
+    <a className="mono" href={explorerAddressUrl(addr)} target="_blank" rel="noreferrer" title={addr} onClick={(e) => e.stopPropagation()}>
       {label ?? shortId(addr, 4)}
     </a>
   );

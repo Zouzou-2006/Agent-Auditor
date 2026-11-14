@@ -2,8 +2,8 @@
 
 import { useMemo } from "react";
 import type { OrderRow, OrderStatus } from "@/lib/db-types";
-import { filterOrders, formatUsd, ORDER_STATUSES, shortId, type DashboardData, type OrderFilter } from "@/lib/dashboard/model";
-import { AddrLink, Empty, fullTime, Icon, SkeletonRows, StatusBadge, timeAgo } from "./ui";
+import { filterOrders, formatUsd, ORDER_STATUSES, paymentTxByOrder, shortId, type DashboardData, type OrderFilter } from "@/lib/dashboard/model";
+import { AddrLink, Empty, fullTime, Icon, SkeletonRows, StatusBadge, timeAgo, TxLink } from "./ui";
 
 interface Props {
   data: DashboardData;
@@ -25,6 +25,7 @@ function paramsText(params: unknown): string {
 
 export default function Orders({ data, now, loading, fresh, filter, onFilter, onOpen, onApprove }: Props) {
   const rows = useMemo(() => filterOrders(data.orders, filter), [data.orders, filter]);
+  const paymentTx = useMemo(() => paymentTxByOrder(data.payments), [data.payments]);
   const sellers = useMemo(() => [...new Set(data.orders.map((o) => o.seller_id))].sort(), [data.orders]);
   const filtered = filter.query !== "" || filter.status !== "all" || filter.seller !== "all";
 
@@ -85,13 +86,14 @@ export default function Orders({ data, now, loading, fresh, filter, onFilter, on
               <th>Item</th>
               <th className="right">Max</th>
               <th className="right">Quote</th>
+              <th>Payment</th>
               <th>Status</th>
               <th>Reason</th>
               <th />
             </tr>
           </thead>
           {loading ? (
-            <SkeletonRows rows={5} cols={9} />
+            <SkeletonRows rows={5} cols={10} />
           ) : (
             <tbody>
               {rows.map((o) => (
@@ -119,6 +121,9 @@ export default function Orders({ data, now, loading, fresh, filter, onFilter, on
                         <AddrLink addr={o.quote_wallet} />
                       </div>
                     )}
+                  </td>
+                  <td>
+                    <TxLink sig={paymentTx.get(o.order_id) ?? null} />
                   </td>
                   <td>
                     <StatusBadge status={o.status} />

@@ -310,3 +310,25 @@ export function orderTrail(order: OrderRow, data: DashboardData): OrderTrail {
 
   return { order, seller, payment, delivery, journal, exception, steps };
 }
+
+const EXPLORER = "https://explorer.solana.com";
+
+/** Solana Explorer page for a transaction on devnet. */
+export function explorerTxUrl(sig: string): string {
+  return `${EXPLORER}/tx/${sig}?cluster=devnet`;
+}
+
+/**
+ * Solana Explorer page for a wallet on devnet. Opens the Tokens tab: USDC lands in the wallet's
+ * token account, so the plain address page can say "Account does not exist" for a seller wallet.
+ */
+export function explorerAddressUrl(addr: string): string {
+  return `${EXPLORER}/address/${addr}/tokens?cluster=devnet`;
+}
+
+/** order_id -> tx_signature of its matched payment (rows from the payments table with an order_id). */
+export function paymentTxByOrder(payments: PaymentRow[]): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const p of payments) if (p.order_id && !map.has(p.order_id)) map.set(p.order_id, p.tx_signature);
+  return map;
+}
