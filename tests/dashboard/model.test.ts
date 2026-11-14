@@ -5,9 +5,12 @@ import {
   dailySpend,
   denyStage,
   EMPTY_DATA,
+  explorerAddressUrl,
+  explorerTxUrl,
   filterOrders,
   formatUsd,
   orderTrail,
+  paymentTxByOrder,
   percent,
   type DashboardData,
   type Rules,
@@ -198,5 +201,26 @@ describe("orderTrail", () => {
     const pending = order({ status: "pending_review", max_amount: 600000, quote_amount: null, quote_wallet: null });
     const trail = orderTrail(pending, { ...EMPTY_DATA, orders: [pending] });
     expect(trail.steps[1]).toMatchObject({ key: "review", state: "waiting" });
+  });
+});
+
+describe("explorer links", () => {
+  it("opens wallets on the Tokens tab, so a seller's USDC shows up", () => {
+    expect(explorerAddressUrl(DATACO)).toBe(`https://explorer.solana.com/address/${DATACO}/tokens?cluster=devnet`);
+  });
+
+  it("opens transactions on devnet", () => {
+    expect(explorerTxUrl("Fwz6")).toBe("https://explorer.solana.com/tx/Fwz6?cluster=devnet");
+  });
+});
+
+describe("paymentTxByOrder", () => {
+  it("maps each matched order to its payment tx and skips unmatched payments", () => {
+    const matched = payment({ tx_signature: "SIG_A", order_id: "order-a" });
+    const unmatched = payment({ tx_signature: "SIG_B", order_id: null });
+    const map = paymentTxByOrder([matched, unmatched]);
+    expect(map.get("order-a")).toBe("SIG_A");
+    expect(map.size).toBe(1);
+    expect(map.get("order-without-payment")).toBeUndefined();
   });
 });
