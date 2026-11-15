@@ -45,15 +45,15 @@ export function Icon({ name, className }: { name: keyof typeof paths | string; c
   );
 }
 
-// Color discipline: red only for critical, amber only for "waiting for a human", green only for
-// completed or verified, everything else neutral gray. The accent color is for interactive things.
+// Status color only: green booked, red critical or flagged, amber waiting for a human, grey blocked
+// and in progress. Cyan is the brand color (see app/globals.css), never a status.
 const ORDER_TONE: Record<OrderStatus, string> = {
   booked: "good",
   paid: "neutral",
   paying: "neutral",
   pending_review: "warning",
   denied: "neutral",
-  exception: "warning",
+  exception: "critical",
 };
 const SEVERITY_TONE: Record<ExceptionSeverity, string> = { critical: "critical", high: "warning", medium: "warning" };
 const EXC_STATUS_TONE: Record<ExceptionStatus, string> = { open: "warning", approved: "good", seller_blocked: "neutral" };
@@ -64,7 +64,7 @@ export const ORDER_TONE_VAR: Record<OrderStatus, string> = {
   paying: "var(--muted)",
   pending_review: "var(--warning)",
   denied: "var(--muted)",
-  exception: "var(--warning)",
+  exception: "var(--critical)",
 };
 
 /** Every badge shows plain words; `raw` (the stored value) goes in the tooltip so the team can still see it. */
