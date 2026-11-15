@@ -1,7 +1,7 @@
 "use client";
 // Small shared pieces for the dashboard: icons, badges, links, dialog. No data fetching here.
 
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useSyncExternalStore, type ReactNode } from "react";
 import type { ExceptionSeverity, ExceptionStatus, OrderStatus, SellerStatus } from "@/lib/db-types";
 import { explorerAddressUrl, explorerTxUrl, shortId } from "@/lib/dashboard/model";
 import type { MatchState, StampKind, ThreeWay } from "@/lib/dashboard/overview";
@@ -90,6 +90,14 @@ export const ExceptionStatusBadge = ({ status }: { status: ExceptionStatus }) =>
 export const SellerStatusBadge = ({ status }: { status: SellerStatus }) => (
   <Badge tone={status === "approved" ? "good" : "neutral"} raw={status}>{SELLER_STATUS_LABEL[status]}</Badge>
 );
+
+const noSubscribe = () => () => {};
+const modKeyNow = () => (/Macintosh|Mac OS X|iPhone|iPad/.test(navigator.userAgent) ? "⌘" : "Ctrl");
+
+/** The shortcut modifier for keyboard hints: "⌘" on a Mac, "Ctrl" elsewhere (and during server render). */
+export function useModKey(): string {
+  return useSyncExternalStore(noSubscribe, modKeyNow, () => "Ctrl");
+}
 
 /** The result stamp (BOOKED, BLOCKED, FLAGGED, NEEDS APPROVAL, NOT CONFIRMED). `animate` plays the
  *  stamp-down once, when the row just changed (Dashboard's fresh keys). */

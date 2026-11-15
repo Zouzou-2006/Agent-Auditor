@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { ExceptionRow, OrderRow, SellerRow } from "@/lib/db-types";
 import { formatUsd } from "@/lib/dashboard/model";
 import { EXCEPTION_STATUS_LABEL, EXCEPTION_TITLE, friendlyStatus, itemLabel, sellerName, SEVERITY_LABEL } from "@/lib/dashboard/words";
-import { Icon } from "./ui";
+import { Icon, useModKey } from "./ui";
 
 export type PaletteAction =
   | { kind: "section"; id: string }
@@ -34,6 +34,7 @@ interface Props {
 }
 
 export default function CommandPalette({ sections, orders, exceptions, sellers, onRun, onClose }: Props) {
+  const mod = useModKey();
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -139,7 +140,7 @@ export default function CommandPalette({ sections, orders, exceptions, sellers, 
         <div className="palette-foot">
           <span><kbd>↑</kbd> <kbd>↓</kbd> move</span>
           <span><kbd>↵</kbd> open</span>
-          <span style={{ marginLeft: "auto" }}><kbd>Ctrl</kbd> <kbd>/</kbd> copilot</span>
+          <span style={{ marginLeft: "auto" }}><kbd>{mod}</kbd> <kbd>/</kbd> copilot</span>
         </div>
       </div>
     </>

@@ -20,7 +20,7 @@ import Ledger from "./Ledger";
 import OrderDrawer from "./OrderDrawer";
 import Orders from "./Orders";
 import Overview from "./Overview";
-import { ConfirmDialog, Icon, timeAgo, type ConfirmRequest } from "./ui";
+import { ConfirmDialog, Icon, timeAgo, useModKey, type ConfirmRequest } from "./ui";
 
 const TABLES = ["sellers", "orders", "payments", "deliveries", "journal_entries", "exceptions"] as const;
 const SECTIONS = [
@@ -79,6 +79,7 @@ function rowKeys(d: DashboardData): Set<string> {
 }
 
 export default function Dashboard({ rules, gatewayWallet }: { rules: Rules; gatewayWallet: string | null }) {
+  const mod = useModKey();
   const [data, setData] = useState<DashboardData>(EMPTY_DATA);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -438,21 +439,20 @@ export default function Dashboard({ rules, gatewayWallet }: { rules: Rules; gate
           </nav>
         </div>
         <div className="sidebar-foot">
-          <span className={`live ${liveState === "live" ? "on" : liveState === "offline" ? "off" : ""}`}>
+          <span
+            className={`live ${liveState === "live" ? "on" : liveState === "offline" ? "off" : ""}`}
+            title={`${liveState === "offline" ? "Realtime dropped; checking every 15 s" : "Realtime updates"} · updated ${updatedAt ? timeAgo(new Date(updatedAt).toISOString(), now) : "—"}`}
+          >
             <span className="dot" />
-            {liveState === "live" ? "Live · realtime" : liveState === "offline" ? "Polling every 15 s" : "Connecting…"}
+            {liveState === "live" ? "Live" : "Reconnecting…"}
           </span>
-          <span>Updated {updatedAt ? timeAgo(new Date(updatedAt).toISOString(), now) : "—"}</span>
-          <span className="kbd-hint">Command menu <kbd>Ctrl K</kbd></span>
-          <span className="kbd-hint">Copilot <kbd>Ctrl /</kbd></span>
         </div>
       </aside>
 
       <div className="main">
         <header className="topbar">
-          {/* On the Overview the hero strip is the heading; other sections keep the title line. */}
+          {/* On the Overview the hero strip is the heading; other sections show the page title. */}
           <h1 className={section === "overview" ? "sr-only" : undefined}>{title}</h1>
-          {section !== "overview" && <span className="crumb hide-sm">· Agent Auditor</span>}
           <span className="spacer" />
           <button
             className={`need-chip ${attnLevel}`}
@@ -466,7 +466,7 @@ export default function Dashboard({ rules, gatewayWallet }: { rules: Rules; gate
           <button className="palette-trigger" onClick={() => setPalette(true)} aria-label="Open command menu">
             <Icon name="search" />
             <span className="label">Jump to order, exception…</span>
-            <kbd>Ctrl K</kbd>
+            <kbd>{mod} K</kbd>
           </button>
           <button className="btn btn-ghost btn-sm" onClick={() => void refresh()} aria-label="Refresh">
             <Icon name="refresh" />
@@ -532,7 +532,7 @@ export default function Dashboard({ rules, gatewayWallet }: { rules: Rules; gate
         <button className="fab" onClick={() => openCopilot()} aria-label={`Open copilot${unseen ? " (new activity)" : ""}`}>
           <span className="orb"><Icon name="spark" /></span>
           <span className="label">Ask copilot</span>
-          <kbd>Ctrl /</kbd>
+          <kbd>{mod} /</kbd>
           {unseen && <span className="news" aria-hidden="true" />}
         </button>
       )}
