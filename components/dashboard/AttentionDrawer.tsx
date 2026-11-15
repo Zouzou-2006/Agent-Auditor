@@ -13,6 +13,8 @@ import { AddrLink, fullTime, Icon, SeverityBadge } from "./ui";
 
 interface Props {
   items: AttentionItem[];
+  /** Highlight and scroll to this item (from an Overview "Review" button), or null. */
+  focusKey?: string | null;
   now: number;
   /** Keys (order_id / exception_id) whose request is in flight. */
   inFlight: Set<string>;
@@ -26,12 +28,20 @@ interface Props {
   onOpenOrder: (order: OrderRow) => void;
 }
 
-export default function AttentionDrawer({ items, now, inFlight, errors, suspended, onClose, onApprove, onException, onOpenOrder }: Props) {
+export default function AttentionDrawer({ items, focusKey = null, now, inFlight, errors, suspended, onClose, onApprove, onException, onOpenOrder }: Props) {
   const closeRef = useRef<HTMLButtonElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
 
   useEffect(() => {
-    closeRef.current?.focus();
-  }, []);
+    // Opened from a "Review" button: bring that item into view and put focus on it.
+    const target = focusKey ? listRef.current?.querySelector<HTMLElement>(`[data-key="${CSS.escape(focusKey)}"]`) : null;
+    if (target) {
+      target.scrollIntoView({ block: "center" });
+      target.focus();
+    } else {
+      closeRef.current?.focus();
+    }
+  }, [focusKey]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -67,12 +77,12 @@ export default function AttentionDrawer({ items, now, inFlight, errors, suspende
               <span>Nothing needs you right now.</span>
             </div>
           ) : (
-            <ul className="attn-list">
+            <ul className="attn-list" ref={listRef}>
               {items.map((item) => {
                 const busy = inFlight.has(item.key);
                 const critical = item.kind === "exception" && item.exception.severity === "critical";
                 return (
-                  <li key={item.key} className={`attn-item${critical ? " crit" : ""}`}>
+                  <li key={item.key} data-key={item.key} tabIndex={-1} className={`attn-item${critical ? " crit" : ""}${item.key === focusKey ? " focused" : ""}`}>
                     <div className="attn-top">
                       <span className={`attn-ico ${critical ? "crit" : "warn"}`}>
                         <Icon name={item.kind === "pending" ? "pause" : "exceptions"} />

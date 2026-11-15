@@ -8,7 +8,7 @@ import type { ExceptionRow, OrderRow, OrderStatus } from "@/lib/db-types";
 import { getBrowserClient } from "@/lib/db-browser";
 import { loadDashboardData } from "@/lib/dashboard/load";
 import { EMPTY_DATA, formatUsd, ORDER_STATUSES, shortId, type DashboardData, type OrderFilter, type Rules } from "@/lib/dashboard/model";
-import { attentionItems, attentionLevel } from "@/lib/dashboard/overview";
+import { attentionItems, attentionLevel, lastDecisionAt } from "@/lib/dashboard/overview";
 import type { Scene } from "@/lib/dashboard/scenes";
 import { itemLabel, networkLabel, sellerName, statusLabel } from "@/lib/dashboard/words";
 import AttentionDrawer from "./AttentionDrawer";
@@ -20,7 +20,7 @@ import Ledger from "./Ledger";
 import OrderDrawer from "./OrderDrawer";
 import Orders from "./Orders";
 import Overview from "./Overview";
-import { ConfirmDialog, Icon, timeAgo, useModKey, type ConfirmRequest } from "./ui";
+import { AgentStatus, ConfirmDialog, Icon, timeAgo, useModKey, type ConfirmRequest } from "./ui";
 
 const TABLES = ["sellers", "orders", "payments", "deliveries", "journal_entries", "exceptions"] as const;
 const SECTIONS = [
@@ -98,6 +98,8 @@ export default function Dashboard({ rules, gatewayWallet }: { rules: Rules; gate
   const [palette, setPalette] = useState(false);
   const [balance, setBalance] = useState<number | null>(null);
   const [attnOpen, setAttnOpen] = useState(false);
+  /** The item a "Review" button asked the needs-you drawer to highlight, or null. */
+  const [attnFocus, setAttnFocus] = useState<string | null>(null);
   const [inFlight, setInFlight] = useState<Set<string>>(new Set());
   const [actionErrors, setActionErrors] = useState<Record<string, string>>({});
   const known = useRef<Set<string> | null>(null);
@@ -137,7 +139,10 @@ export default function Dashboard({ rules, gatewayWallet }: { rules: Rules; gate
         const seen = knownCritical.current;
         const isNew = critical.some((id) => !seen.has(id));
         for (const id of critical) seen.add(id);
-        if (isNew && claimAutoOpen(autoOpened)) setAttnOpen(true);
+        if (isNew && claimAutoOpen(autoOpened)) {
+          setAttnFocus(null);
+          setAttnOpen(true);
+        }
       }
       setData(next);
       setError(null);
@@ -227,6 +232,7 @@ export default function Dashboard({ rules, gatewayWallet }: { rules: Rules; gate
         setCopilot((c) => ({ ...c, open: !c.open, seed: undefined }));
       } else if (!mod && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "n" && !isTyping(e.target)) {
         e.preventDefault();
+        setAttnFocus(null);
         setAttnOpen((open) => !open);
       }
     };
@@ -411,7 +417,16 @@ export default function Dashboard({ rules, gatewayWallet }: { rules: Rules; gate
   );
   const attention = useMemo(() => attentionItems(data, rules), [data, rules]);
   const attnLevel = attentionLevel(attention);
-  const closeAttention = useCallback(() => setAttnOpen(false), []);
+  const closeAttention = useCallback(() => {
+    setAttnOpen(false);
+    setAttnFocus(null);
+  }, []);
+  /** Opens the needs-you drawer; with a key (an exception or order id), that item is highlighted. */
+  const openAttention = useCallback((key: string | null) => {
+    setAttnFocus(key);
+    setAttnOpen(true);
+  }, []);
+  const lastDecision = useMemo(() => lastDecisionAt(data), [data]);
   const title = SECTIONS.find((s) => s.id === section)?.label ?? "Overview";
   const liveState: Live = error && live !== "live" ? "offline" : live;
   const copilotContext = useMemo(() => ({ section, order: drawer }), [section, drawer]);
@@ -450,27 +465,33 @@ export default function Dashboard({ rules, gatewayWallet }: { rules: Rules; gate
       </aside>
 
       <div className="main">
-        <header className="topbar">
-          {/* On the Overview the hero strip is the heading; other sections show the page title. */}
-          <h1 className={section === "overview" ? "sr-only" : undefined}>{title}</h1>
-          <span className="spacer" />
-          <button
-            className={`need-chip ${attnLevel}`}
-            onClick={() => setAttnOpen(true)}
-            aria-label={`${attention.length} item${attention.length === 1 ? "" : "s"} need you (shortcut N)`}
-          >
-            <span className="dot" />
-            {attention.length} {attention.length === 1 ? "needs" : "need"} you
-            <kbd className="hide-sm">N</kbd>
-          </button>
-          <button className="palette-trigger" onClick={() => setPalette(true)} aria-label="Open command menu">
-            <Icon name="search" />
-            <span className="label">Jump to order, exception…</span>
-            <kbd>{mod} K</kbd>
-          </button>
-          <button className="btn btn-ghost btn-sm" onClick={() => void refresh()} aria-label="Refresh">
-            <Icon name="refresh" />
-          </button>
+        {/* Every page shows its title. The Overview adds what Agent Auditor does (a full-width second
+            row, so it stays on one line) and the agent's status pill. */}
+        <header className={`topbar${section === "overview" ? " has-sub" : ""}`}>
+          <h1>{title}</h1>
+          {section === "overview" && (
+            <p className="topbar-sub">Checks every payment your AI agent makes: rules before it pays, the blockchain after, and what it actually received.</p>
+          )}
+          <div className="topbar-actions">
+            {section === "overview" && <AgentStatus live={liveState} last={lastDecision} now={now} loading={loading} />}
+            <button
+              className={`need-chip ${attnLevel}`}
+              onClick={() => openAttention(null)}
+              aria-label={`${attention.length} item${attention.length === 1 ? "" : "s"} need you (shortcut N)`}
+            >
+              <span className="dot" />
+              {attention.length} {attention.length === 1 ? "needs" : "need"} you
+              <kbd className="hide-sm">N</kbd>
+            </button>
+            <button className="palette-trigger" onClick={() => setPalette(true)} aria-label="Open command menu">
+              <Icon name="search" />
+              <span className="label">Jump to order, exception…</span>
+              <kbd>{mod} K</kbd>
+            </button>
+            <button className="btn btn-ghost btn-sm" onClick={() => void refresh()} aria-label="Refresh">
+              <Icon name="refresh" />
+            </button>
+          </div>
         </header>
         <nav className="mobile-nav" aria-label="Sections">
           {SECTIONS.map((s) => (
@@ -489,7 +510,7 @@ export default function Dashboard({ rules, gatewayWallet }: { rules: Rules; gate
           )}
 
           {section === "overview" && (
-            <Overview data={data} rules={rules} gatewayWallet={gatewayWallet} now={now} loading={loading} live={liveState} fresh={fresh} onOpenOrder={setDrawer} onNavigate={navigate} onScene={onScene} />
+            <Overview data={data} rules={rules} gatewayWallet={gatewayWallet} now={now} loading={loading} fresh={fresh} onOpenOrder={setDrawer} onNavigate={navigate} onScene={onScene} onReview={openAttention} />
           )}
           {section === "orders" && <Orders data={data} now={now} loading={loading} fresh={fresh} filter={filter} onFilter={setFilter} onOpen={setDrawer} onApprove={approveOrder} />}
           {section === "exceptions" && <Exceptions data={data} now={now} loading={loading} fresh={fresh} onOpenOrder={setDrawer} onAction={exceptionAction} />}
@@ -501,6 +522,7 @@ export default function Dashboard({ rules, gatewayWallet }: { rules: Rules; gate
       {attnOpen && (
         <AttentionDrawer
           items={attention}
+          focusKey={attnFocus}
           now={now}
           inFlight={inFlight}
           errors={actionErrors}

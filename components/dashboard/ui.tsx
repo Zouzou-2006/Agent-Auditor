@@ -91,6 +91,25 @@ export const SellerStatusBadge = ({ status }: { status: SellerStatus }) => (
   <Badge tone={status === "approved" ? "good" : "neutral"} raw={status}>{SELLER_STATUS_LABEL[status]}</Badge>
 );
 
+const HOUR_MS = 3_600_000;
+
+/** "Agent idle · ● Live · last decision 2d ago": the top bar's status pill on the Overview. */
+export function AgentStatus({ live, last, now, loading }: { live: "connecting" | "live" | "offline"; last: string | null; now: number; loading: boolean }) {
+  const active = last !== null && now - Date.parse(last) < HOUR_MS;
+  return (
+    <span className="status-pill">
+      <span>{active ? "Agent active" : "Agent idle"}</span>
+      <span aria-hidden="true">·</span>
+      <span className={`live ${live === "live" ? "on" : live === "offline" ? "off" : ""}`}>
+        <span className="dot" />
+        {live === "live" ? "Live" : live === "offline" ? "Reconnecting…" : "Connecting…"}
+      </span>
+      <span aria-hidden="true">·</span>
+      <span>{loading ? "loading…" : last ? <>last decision <time dateTime={last} title={fullTime(last)}>{timeShort(last, now)}</time></> : "no decisions yet"}</span>
+    </span>
+  );
+}
+
 const noSubscribe = () => () => {};
 const modKeyNow = () => (/Macintosh|Mac OS X|iPhone|iPad/.test(navigator.userAgent) ? "⌘" : "Ctrl");
 
@@ -125,16 +144,19 @@ const LEG_WORD: Record<MatchState, string> = { ok: "checks out", failed: "failed
  * Order ↔ Payment ↔ Delivery: linked chips. A blocked order shows only the Order chip; a payment with
  * no order shows Order ✕ and Payment ✓. With a transaction, the Payment chip opens it on Solana Explorer.
  */
-export function MatchChips({ match, tx = null }: { match: ThreeWay; tx?: string | null }) {
+export function MatchChips({ match, tx = null, slots = false }: { match: ThreeWay; tx?: string | null; slots?: boolean }) {
   const legs: [string, MatchState | null, string][] = [
     ["Order", match.order, match.tips.order],
     ["Payment", match.payment, match.tips.payment],
     ["Delivery", match.delivery, match.tips.delivery],
   ];
-  const shown = legs.filter((l): l is [string, MatchState, string] => l[1] !== null);
+  // With `slots`, a missing leg keeps its space so chips line up in columns down a list.
+  const shown = slots ? legs : legs.filter((l) => l[1] !== null);
   return (
     <span className="match">
       {shown.map(([name, state, tip], i) => {
+        const slot = `s-${name.toLowerCase()}`;
+        if (state === null) return <span key={name} className={`match-step ${slot} slot-empty`} aria-hidden="true" />;
         const body = (
           <>
             <i aria-hidden="true">{LEG_ICON[state]}</i>
@@ -142,7 +164,7 @@ export function MatchChips({ match, tx = null }: { match: ThreeWay; tx?: string 
           </>
         );
         return (
-          <span key={name} className="match-step">
+          <span key={name} className={`match-step ${slot}`}>
             {i > 0 && <span className={`match-link${state === "none" ? " off" : ""}`} aria-hidden="true" />}
             {name === "Payment" && tx ? (
               <a

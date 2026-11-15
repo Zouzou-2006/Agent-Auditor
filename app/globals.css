@@ -108,9 +108,17 @@ a > svg, .linklike > svg { width: 13px; height: 13px; vertical-align: -2px; marg
 .sidebar-foot { margin-top: auto; display: flex; flex-direction: column; gap: 10px; padding: 12px 10px 0; border-top: 1px solid var(--border); font-size: var(--fs-small); color: var(--muted); }
 
 .main { min-width: 0; display: flex; flex-direction: column; overflow-x: clip; }
-.topbar { height: 64px; display: flex; align-items: center; gap: 12px; padding: 0 28px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: rgba(5, 7, 10, 0.8); backdrop-filter: blur(14px) saturate(140%); z-index: 10; }
-.topbar h1 { font-size: var(--fs-title); font-weight: 650; margin: 0; letter-spacing: -0.5px; }
-.topbar .spacer { flex: 1; }
+/* Title left, actions right; on the Overview a muted line spans a second row under them, so it stays
+   on one line. The side padding tracks the centered content column, so the title lines up with it. */
+.topbar { min-height: 64px; display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "title actions"; align-items: center; column-gap: 16px; padding: 0 max(28px, calc((100% - 1480px) / 2 + 28px)); border-bottom: 1px solid var(--border); position: sticky; top: 0; background: rgba(5, 7, 10, 0.85); backdrop-filter: blur(14px) saturate(140%); z-index: 10; }
+.topbar.has-sub { grid-template-areas: "title actions" "sub sub"; row-gap: 1px; padding-top: 12px; padding-bottom: 12px; }
+.topbar h1 { grid-area: title; font-size: var(--fs-title); font-weight: 650; margin: 0; letter-spacing: -0.5px; line-height: 1.2; }
+.topbar-sub { grid-area: sub; margin: 0; font-size: var(--fs-small); color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.topbar-actions { grid-area: actions; display: flex; align-items: center; gap: 12px; }
+.status-pill { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 99px; border: 1px solid var(--border); background: var(--raised); font-size: var(--fs-small); color: var(--text-2); white-space: nowrap; }
+.status-pill .live { font-size: var(--fs-small); }
+@media (max-width: 1200px) { .palette-trigger { min-width: 0; } .palette-trigger .label { display: none; } }
+@media (max-width: 1000px) { .status-pill { display: none; } }
 .palette-trigger { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 8px 0 10px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--raised); color: var(--muted); cursor: pointer; min-width: 240px; }
 .palette-trigger:hover { border-color: var(--border-strong); color: var(--text-2); }
 .palette-trigger svg { width: 14px; height: 14px; }
@@ -118,7 +126,8 @@ a > svg, .linklike > svg { width: 13px; height: 13px; vertical-align: -2px; marg
 @media (max-width: 900px) { .palette-trigger { min-width: 0; } .palette-trigger .label { display: none; } }
 /* Bottom padding = the floating copilot button (48px tall, 24px from the bottom) plus room, so the
    last row on every page scrolls clear of it. */
-.content { padding: 24px 28px calc(48px + 24px + 40px); display: flex; flex-direction: column; gap: 18px; max-width: 1480px; width: 100%; }
+/* Centered when the window is wider than the content column. */
+.content { padding: 24px 28px calc(48px + 24px + 40px); display: flex; flex-direction: column; gap: 18px; max-width: 1480px; width: 100%; margin-inline: auto; }
 
 .mobile-nav { display: none; }
 @media (max-width: 900px) {
@@ -326,15 +335,12 @@ td.right, th.right { text-align: right; }
 
 /* Left: what the auditor did. Right: today's spend, set close with a divider instead of empty space. */
 /* Top card: "This week, Agent Auditor…", what it checks, and three result tiles. */
-.hero { padding: 24px 24px 22px; }
+.hero { padding: 20px 24px 22px; }
 .hero-heading { margin: 0; font-size: var(--fs-head); font-weight: 600; color: var(--text); }
-.hero-lede { margin: 6px 0 0; color: var(--text-2); max-width: 70ch; }
-.hero-sub { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; font-size: var(--fs-small); color: var(--muted); }
-.hero-sub .live { font-size: var(--fs-small); }
 @media (max-width: 760px) { .hero { padding: 20px var(--pad); } }
 
 /* Three separate results: own box, own status color (same as the FLAGGED / BLOCKED / BOOKED stamps). */
-.outcomes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-top: 20px; }
+.outcomes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-top: 14px; }
 @media (max-width: 760px) { .outcomes { grid-template-columns: minmax(0, 1fr); } }
 .outcome { --tone: var(--text-2); --tone-line: var(--border-strong); --tone-soft: transparent; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; padding: 16px 18px 15px; border-radius: 12px; border: 1px solid var(--border); background: linear-gradient(180deg, var(--tone-soft), transparent 70%), rgba(255, 255, 255, 0.02); box-shadow: inset 0 2px 0 var(--tone-line); color: var(--text); cursor: pointer; transition: border-color 0.15s, background-color 0.15s, transform 0.15s; }
 .outcome:hover { border-color: var(--tone-line); background-color: rgba(255, 255, 255, 0.045); }
@@ -346,15 +352,16 @@ td.right, th.right { text-align: right; }
 .outcome-label { font-size: var(--fs-head); font-weight: 600; margin-top: 4px; }
 .outcome-note { font-size: var(--fs-small); color: var(--muted); }
 .spend-value { color: var(--accent); text-shadow: 0 0 28px rgba(34, 211, 238, 0.25); }
-.stat .meter { margin: 6px 0 2px; }
 
-.ov-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
-@media (max-width: 760px) { .ov-stats { grid-template-columns: minmax(0, 1fr); } }
-.stat { padding: var(--pad); display: flex; flex-direction: column; gap: 6px; }
-.stat-label { font-size: var(--fs-head); color: var(--text); font-weight: 600; }
-.stat-value { font-size: var(--fs-big); font-weight: 650; letter-spacing: -1.2px; line-height: 1.05; font-variant-numeric: tabular-nums; }
-.stat-foot { font-size: var(--fs-small); color: var(--text-2); }
-.stat-aside { font-size: var(--fs-head); font-weight: 550; letter-spacing: 0; color: var(--text-2); }
+/* The spending strip: two halves on one line each, split by a thin rule. */
+.ov-strip { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.strip-half { display: flex; align-items: baseline; gap: 14px; padding: 14px 24px; min-width: 0; white-space: nowrap; }
+.strip-right { border-left: 1px solid var(--border); }
+.strip-label { font-size: var(--fs-head); font-weight: 600; color: var(--text); }
+.strip-value { font-size: var(--fs-big); font-weight: 650; letter-spacing: -1.2px; line-height: 1; font-variant-numeric: tabular-nums; }
+.strip-aside { font-size: var(--fs-head); font-weight: 550; letter-spacing: 0; color: var(--text-2); }
+.strip-meter { flex: 0 1 140px; min-width: 60px; align-self: center; }
+@media (max-width: 760px) { .ov-strip { grid-template-columns: minmax(0, 1fr); } .strip-right { border-left: 0; border-top: 1px solid var(--border); } .strip-half { white-space: normal; flex-wrap: wrap; } }
 .crit-text { color: var(--critical); }
 
 .activity { list-style: none; margin: 0; padding: 6px 0; }
@@ -369,7 +376,12 @@ td.right, th.right { text-align: right; }
 .act-ico.crit, .attn-ico.crit { color: var(--critical); border-color: var(--critical-line); background: var(--critical-soft); }
 /* A long sentence wraps to a second line rather than losing its end; never more than two. */
 .act-text { min-width: 0; flex: 1; font-size: var(--fs-body); line-height: 1.4; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
-.act-match { flex: none; width: 262px; display: flex; justify-content: flex-start; }
+.act-match { flex: none; width: 258px; display: flex; justify-content: flex-start; }
+/* Reserved in every row; filled only on open flagged rows, visible on hover or keyboard focus. */
+.act-review { flex: none; width: 66px; display: flex; justify-content: flex-end; }
+.review-btn { opacity: 0; pointer-events: none; transition: opacity 0.12s; }
+.activity li:hover .review-btn, .activity li:focus-within .review-btn { opacity: 1; pointer-events: auto; }
+@media (hover: none) { .review-btn { opacity: 1; pointer-events: auto; } }
 .act-amount { min-width: 64px; text-align: right; font-size: var(--fs-body); white-space: nowrap; font-weight: 550; }
 .act-amount.struck { text-decoration: line-through; text-decoration-thickness: 1px; color: var(--muted); font-weight: 400; }
 .act-stamp { flex: none; width: var(--stamp-w); display: flex; justify-content: center; }
@@ -377,6 +389,9 @@ td.right, th.right { text-align: right; }
 /* Critical rows (a payment with no order, a wrong wallet): a red edge and a faint red tint. */
 .activity li.critical { box-shadow: inset 3px 0 0 var(--critical); background: rgba(255, 118, 118, 0.06); }
 .activity li.critical:hover { background: rgba(255, 118, 118, 0.1); }
+/* Narrower windows: tighter spacing (same in every row, so the columns stay straight) to give the
+   sentence the room it needs to fit in two lines. */
+@media (max-width: 1400px) { .activity li { gap: 8px; padding-left: 16px; padding-right: 16px; } .act-when { min-width: 46px; } }
 @media (max-width: 1100px) { .act-match { display: none; } }
 @media (max-width: 640px) {
   .activity li { flex-wrap: wrap; row-gap: 6px; }
@@ -403,6 +418,14 @@ td.right, th.right { text-align: right; }
 /* ---------- three-way match: Order ↔ Payment ↔ Delivery ---------- */
 .match { display: inline-flex; align-items: center; }
 .match-step { display: inline-flex; align-items: center; }
+/* Fixed width per chip type (measured: Order 65px, Payment 82px, Delivery 79px at their widest), so
+   each type sits in its own column down a list; an empty slot keeps the same width. */
+.match-step.s-order .leg { width: 68px; justify-content: center; }
+.match-step.s-payment .leg { width: 86px; justify-content: center; }
+.match-step.s-delivery .leg { width: 84px; justify-content: center; }
+.match-step.slot-empty.s-order { width: 68px; }
+.match-step.slot-empty.s-payment { width: calc(10px + 86px); }
+.match-step.slot-empty.s-delivery { width: calc(10px + 84px); }
 .match-link { width: 10px; height: 1.5px; background: var(--border-strong); }
 .match-link:not(.off) { background: var(--text-2); }
 .leg { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 7px; border-radius: 6px; font-size: var(--fs-small); font-weight: 550; border: 1px solid var(--border-strong); color: var(--muted); background: var(--raised); white-space: nowrap; cursor: default; }
@@ -428,6 +451,9 @@ a.leg-link:hover { text-decoration: none; border-color: currentColor; filter: br
 .attn-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
 .attn-item { display: flex; flex-direction: column; gap: 12px; padding: 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--card); }
 .attn-item.crit { border-color: var(--critical-line); box-shadow: inset 3px 0 0 var(--critical); }
+/* The item a "Review" button opened the drawer on. */
+.attn-item.focused { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--critical), 0 0 0 3px rgba(34, 211, 238, 0.18); }
+.attn-item:focus { outline: none; }
 .attn-top { display: flex; gap: 12px; align-items: flex-start; }
 .attn-main { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 5px; }
 .attn-title { display: flex; align-items: baseline; gap: 8px; font-weight: 600; }

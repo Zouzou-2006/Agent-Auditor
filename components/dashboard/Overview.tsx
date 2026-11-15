@@ -6,7 +6,7 @@
 import { useMemo, useSyncExternalStore, type KeyboardEvent } from "react";
 import type { OrderRow } from "@/lib/db-types";
 import { computeOverview, type DashboardData, type Rules } from "@/lib/dashboard/model";
-import { etClock, lastDecisionAt, nextUtcMidnight, recentActivity, weekOutcomes, weekStats, type ActivityRow } from "@/lib/dashboard/overview";
+import { etClock, nextUtcMidnight, recentActivity, weekOutcomes, weekStats, type ActivityRow } from "@/lib/dashboard/overview";
 import { detectScenes, type Scene } from "@/lib/dashboard/scenes";
 import { bookedNote, dollars, outcomeLabel, problemNote, timeShort } from "@/lib/dashboard/words";
 import { Empty, fullTime, MatchChips, Stamp } from "./ui";
@@ -17,18 +17,18 @@ interface Props {
   gatewayWallet: string | null;
   now: number;
   loading: boolean;
-  live: "connecting" | "live" | "offline";
   fresh: Set<string>;
   onOpenOrder: (order: OrderRow) => void;
   onNavigate: (section: string) => void;
   onScene: (scene: Scene) => void;
+  /** Open the needs-you drawer on this exception (a flagged row's "Review" button). */
+  onReview: (key: string) => void;
 }
 
-const HOUR_MS = 3_600_000;
 const noSubscribe = () => () => {};
 const demoFlag = () => new URLSearchParams(window.location.search).get("demo") === "1";
 
-export default function Overview({ data, rules, gatewayWallet, now, loading, live, fresh, onOpenOrder, onNavigate, onScene }: Props) {
+export default function Overview({ data, rules, gatewayWallet, now, loading, fresh, onOpenOrder, onNavigate, onScene, onReview }: Props) {
   // The daily limit is per UTC day (gateway rule); recompute only when the UTC day changes.
   const day = new Date(now).toISOString().slice(0, 10);
   const nowDate = useMemo(() => new Date(`${day}T12:00:00Z`), [day]);
@@ -37,8 +37,6 @@ export default function Overview({ data, rules, gatewayWallet, now, loading, liv
   const outcomes = useMemo(() => weekOutcomes(data, gatewayWallet, now), [data, gatewayWallet, now]);
   const activity = useMemo(() => recentActivity(data, 8, now), [data, now]);
   const scenes = useMemo(() => detectScenes(data), [data]);
-  const last = useMemo(() => lastDecisionAt(data), [data]);
-  const active = last !== null && now - Date.parse(last) < HOUR_MS;
   const meterClass = today.dailyUsedPct >= 90 ? "crit" : today.dailyUsedPct >= 70 ? "warn" : "";
   // The demo checklist is for recording the video: shown only with ?demo=1 (false on the server).
   const showScenes = useSyncExternalStore(noSubscribe, demoFlag, () => false);
@@ -47,17 +45,6 @@ export default function Overview({ data, rules, gatewayWallet, now, loading, liv
     <div className="ov">
       <section className="card hero" aria-labelledby="hero-h">
         <h2 id="hero-h" className="hero-heading">This week, Agent Auditor…</h2>
-        <p className="hero-lede">Checks every payment your AI agent makes: rules before it pays, the blockchain after, and what it actually received.</p>
-        <div className="hero-sub">
-          <span>{active ? "Agent active" : "Agent idle"}</span>
-          <span aria-hidden="true">·</span>
-          <span className={`live ${live === "live" ? "on" : live === "offline" ? "off" : ""}`}>
-            <span className="dot" />
-            {live === "live" ? "Live" : live === "offline" ? "Reconnecting…" : "Connecting…"}
-          </span>
-          <span aria-hidden="true">·</span>
-          <span>{loading ? "loading…" : last ? <>last decision <time dateTime={last} title={fullTime(last)}>{timeShort(last, now)}</time></> : "no decisions yet"}</span>
-        </div>
         {/* Three separate results, each a way into the page that holds the detail. */}
         <div className="outcomes">
           <Outcome
@@ -90,40 +77,42 @@ export default function Overview({ data, rules, gatewayWallet, now, loading, liv
         </div>
       </section>
 
-      <div className="ov-stats">
-        <div className="card stat">
-          <div className="stat-label">This week</div>
-          <div className="stat-value num">
-            {loading ? (
-              <span className="skeleton" style={{ display: "block", width: 90, height: 40 }} />
-            ) : (
-              <>
-                {dollars(week.spent)}
+      {/* One slim strip: the week's money out on the left, today's spend against the budget on the right. */}
+      <section className="card ov-strip" aria-label="Spending">
+        <div className="strip-half" title={`${week.purchases} purchase${week.purchases === 1 ? "" : "s"}, confirmed on Solana · since Monday ET`}>
+          <span className="strip-label">This week</span>
+          {loading ? (
+            <span className="skeleton" style={{ width: 160, height: 28 }} />
+          ) : (
+            <span className="strip-value num">
+              {dollars(week.spent)}
+              <span className="strip-aside">
+                {" "}out
                 {week.unmatched > 0 && (
-                  <span className="stat-aside">
-                    {" "}out · <span className="crit-text">{dollars(week.unmatched)} with no order</span>
-                  </span>
+                  <>
+                    {" "}· <span className="crit-text">{dollars(week.unmatched)} with no order</span>
+                  </>
                 )}
-              </>
-            )}
-          </div>
-          <div className="stat-foot">
-            {week.purchases} purchase{week.purchases === 1 ? "" : "s"}, confirmed on Solana · since Monday ET
-          </div>
+              </span>
+            </span>
+          )}
         </div>
-        <div className="card stat">
-          <div className="stat-label">Spent today</div>
-          <div className="stat-value num spend-value">
-            {loading ? <span className="skeleton" style={{ display: "block", width: 110, height: 40 }} /> : dollars(today.spentToday)}
-          </div>
-          <div className={`meter ${meterClass}`} role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={today.dailyUsedPct} aria-label="Daily budget used">
+        <div className="strip-half strip-right" title={`Daily budget resets at ${etClock(nextUtcMidnight(now))} ET`}>
+          <span className="strip-label">Today</span>
+          {loading ? (
+            <span className="skeleton" style={{ width: 140, height: 28 }} />
+          ) : (
+            <span className="strip-value num">
+              {/* Cyan only when something was spent; $0.00 stays plain. */}
+              <span className={today.spentToday > 0 ? "spend-value" : undefined}>{dollars(today.spentToday)}</span>
+              <span className="strip-aside"> of {dollars(today.dailyLimit)}</span>
+            </span>
+          )}
+          <div className={`meter strip-meter ${meterClass}`} role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={today.dailyUsedPct} aria-label="Daily budget used">
             <span style={{ width: `${Math.max(today.dailyUsedPct, today.spentToday > 0 ? 2 : 0)}%` }} />
           </div>
-          <div className="stat-foot num">
-            of {dollars(today.dailyLimit)} daily budget · resets at {etClock(nextUtcMidnight(now))} ET
-          </div>
         </div>
-      </div>
+      </section>
 
       <section className="card" aria-labelledby="activity-h">
         <div className="card-head">
@@ -147,7 +136,7 @@ export default function Overview({ data, rules, gatewayWallet, now, loading, liv
         ) : (
           <ul className="activity">
             {activity.map((row) => (
-              <ActivityLine key={row.key} row={row} now={now} fresh={row.freshKeys.some((k) => fresh.has(k))} onOpenOrder={onOpenOrder} />
+              <ActivityLine key={row.key} row={row} now={now} fresh={row.freshKeys.some((k) => fresh.has(k))} onOpenOrder={onOpenOrder} onReview={onReview} />
             ))}
           </ul>
         )}
@@ -206,8 +195,22 @@ function Outcome({
   );
 }
 
-function ActivityLine({ row, now, fresh, onOpenOrder }: { row: ActivityRow; now: number; fresh: boolean; onOpenOrder: (order: OrderRow) => void }) {
+function ActivityLine({
+  row,
+  now,
+  fresh,
+  onOpenOrder,
+  onReview,
+}: {
+  row: ActivityRow;
+  now: number;
+  fresh: boolean;
+  onOpenOrder: (order: OrderRow) => void;
+  onReview: (key: string) => void;
+}) {
   const open = () => row.order && onOpenOrder(row.order);
+  // A flagged row whose exception is still open is waiting in the needs-you drawer.
+  const reviewKey = row.stamp === "flagged" && row.exception?.status === "open" ? row.exception.exception_id : null;
   const onKey = (e: KeyboardEvent<HTMLLIElement>) => {
     if (row.order && (e.key === "Enter" || e.key === " ")) {
       e.preventDefault();
@@ -226,9 +229,26 @@ function ActivityLine({ row, now, fresh, onOpenOrder }: { row: ActivityRow; now:
       <span className="act-text" title={row.note ?? row.text}>
         {row.text}
       </span>
-      {/* The Payment chip is the link to the transaction on Solana, when there is one. */}
+      {/* The Payment chip is the link to the transaction on Solana, when there is one. Fixed slots keep
+          the Order, Payment and Delivery chips in columns down the list. */}
       <span className="act-match">
-        <MatchChips match={row.match} tx={row.tx} />
+        <MatchChips match={row.match} tx={row.tx} slots />
+      </span>
+      {/* Every row reserves this slot so amounts stay in a straight column; only open flagged rows fill it,
+          and the button shows on hover or keyboard focus. */}
+      <span className="act-review">
+        {reviewKey && (
+          <button
+            className="btn btn-sm review-btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              onReview(reviewKey);
+            }}
+            onKeyDown={(e) => e.stopPropagation()}
+          >
+            Review
+          </button>
+        )}
       </span>
       <span className={`act-amount num${row.struck ? " struck" : ""}`} title={row.struck ? "Not spent: blocked before payment" : undefined}>
         {row.amount !== null ? dollars(row.amount) : ""}
