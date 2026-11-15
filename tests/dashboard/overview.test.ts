@@ -328,7 +328,8 @@ describe("recentActivity", () => {
     });
     const rows = recentActivity(d, 8, now);
     expect(rows.map((r) => r.rowKey)).toEqual(["ez", "x", "n", "s"]);
-    expect(rows[0]).toMatchObject({ stamp: "flagged", critical: true, match: null });
+    // A payment with no order uses the same three-way match: Order ✕, Payment ✓, no Delivery leg.
+    expect(rows[0]).toMatchObject({ stamp: "flagged", critical: true, tx: "tz", match: { order: "failed", payment: "ok", delivery: null } });
     expect(rows[1]).toMatchObject({ stamp: "flagged", text: "Paid CheapData $0.10 and got nothing back.", exception: { exception_id: "ex" } });
     expect(rows[1].freshKeys).toEqual(expect.arrayContaining(["x", "tx", "ex", "status:x:exception"]));
     expect(rows[2]).toMatchObject({ stamp: "blocked", struck: true });

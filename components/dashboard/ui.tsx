@@ -121,8 +121,11 @@ export function SeverityStamp({ severity }: { severity: ExceptionSeverity }) {
 const LEG_ICON: Record<MatchState, string> = { ok: "✓", failed: "✕", blocked: "✕", none: "·" };
 const LEG_WORD: Record<MatchState, string> = { ok: "checks out", failed: "failed", blocked: "blocked", none: "not reached yet" };
 
-/** Order ↔ Payment ↔ Delivery: three linked chips. A blocked order shows only the Order chip. */
-export function MatchChips({ match }: { match: ThreeWay }) {
+/**
+ * Order ↔ Payment ↔ Delivery: linked chips. A blocked order shows only the Order chip; a payment with
+ * no order shows Order ✕ and Payment ✓. With a transaction, the Payment chip opens it on Solana Explorer.
+ */
+export function MatchChips({ match, tx = null }: { match: ThreeWay; tx?: string | null }) {
   const legs: [string, MatchState | null, string][] = [
     ["Order", match.order, match.tips.order],
     ["Payment", match.payment, match.tips.payment],
@@ -130,16 +133,37 @@ export function MatchChips({ match }: { match: ThreeWay }) {
   ];
   const shown = legs.filter((l): l is [string, MatchState, string] => l[1] !== null);
   return (
-    <span className="match" aria-label={shown.map(([name, state]) => `${name} ${LEG_WORD[state]}`).join(", ")}>
-      {shown.map(([name, state, tip], i) => (
-        <span key={name} className="match-step">
-          {i > 0 && <span className={`match-link${state === "none" ? " off" : ""}`} aria-hidden="true" />}
-          <span className={`leg leg-${state}`} title={tip ? `${name}: ${LEG_WORD[state]}\n${tip}` : `${name}: ${LEG_WORD[state]}`}>
+    <span className="match">
+      {shown.map(([name, state, tip], i) => {
+        const body = (
+          <>
             <i aria-hidden="true">{LEG_ICON[state]}</i>
             {name}
+          </>
+        );
+        return (
+          <span key={name} className="match-step">
+            {i > 0 && <span className={`match-link${state === "none" ? " off" : ""}`} aria-hidden="true" />}
+            {name === "Payment" && tx ? (
+              <a
+                className={`leg leg-${state} leg-link`}
+                href={explorerTxUrl(tx)}
+                target="_blank"
+                rel="noreferrer"
+                title="View on Solana"
+                aria-label={`Payment ${LEG_WORD[state]}. View on Solana`}
+                onClick={(e) => e.stopPropagation()}
+              >
+                {body}
+              </a>
+            ) : (
+              <span className={`leg leg-${state}`} title={tip ? `${name}: ${LEG_WORD[state]}\n${tip}` : `${name}: ${LEG_WORD[state]}`} aria-label={`${name} ${LEG_WORD[state]}`}>
+                {body}
+              </span>
+            )}
           </span>
-        </span>
-      ))}
+        );
+      })}
     </span>
   );
 }

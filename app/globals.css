@@ -51,6 +51,7 @@
   --fs-head: 15px;
   --fs-body: 13.5px;
   --fs-small: 12px;
+  --stamp-w: 148px; /* every result stamp, sized to "Needs approval" */
 
   --radius: 14px;
   --radius-sm: 9px;
@@ -263,7 +264,7 @@ td.right, th.right { text-align: right; }
 
 /* ---------- exception cards ---------- */
 .exc-list { list-style: none; margin: 0; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
-.exc-card { display: grid; grid-template-columns: 96px minmax(0, 1fr) auto auto; align-items: center; gap: 16px; padding: 16px 18px; border: 1px solid var(--border); border-radius: 12px; background: rgba(255, 255, 255, 0.02); transition: border-color 0.15s, background 0.15s; }
+.exc-card { display: grid; grid-template-columns: var(--stamp-w) minmax(0, 1fr) auto auto; align-items: center; gap: 16px; padding: 16px 18px; border: 1px solid var(--border); border-radius: 12px; background: rgba(255, 255, 255, 0.02); transition: border-color 0.15s, background 0.15s; }
 .exc-card.clickable { cursor: pointer; }
 .exc-card.clickable:hover { border-color: var(--border-strong); background: var(--hover); }
 .exc-card.sev-critical { border-color: var(--critical-line); box-shadow: inset 3px 0 0 var(--critical); background: rgba(255, 118, 118, 0.05); }
@@ -366,12 +367,12 @@ td.right, th.right { text-align: right; }
 .act-ico.completed { color: var(--good); border-color: var(--good-line); background: var(--good-soft); }
 .act-ico.pending, .act-ico.warn, .attn-ico.warn { color: var(--warning); border-color: var(--warning-line); background: var(--warning-soft); }
 .act-ico.crit, .attn-ico.crit { color: var(--critical); border-color: var(--critical-line); background: var(--critical-soft); }
-.act-text { min-width: 0; flex: 1; font-size: var(--fs-body); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.act-link { margin-left: 8px; font-size: var(--fs-small); white-space: nowrap; }
+/* A long sentence wraps to a second line rather than losing its end; never more than two. */
+.act-text { min-width: 0; flex: 1; font-size: var(--fs-body); line-height: 1.4; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
 .act-match { flex: none; width: 262px; display: flex; justify-content: flex-start; }
 .act-amount { min-width: 64px; text-align: right; font-size: var(--fs-body); white-space: nowrap; font-weight: 550; }
 .act-amount.struck { text-decoration: line-through; text-decoration-thickness: 1px; color: var(--muted); font-weight: 400; }
-.act-stamp { flex: none; width: 128px; display: flex; justify-content: center; }
+.act-stamp { flex: none; width: var(--stamp-w); display: flex; justify-content: center; }
 .act-when { min-width: 56px; text-align: right; font-size: var(--fs-small); color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
 /* Critical rows (a payment with no order, a wrong wallet): a red edge and a faint red tint. */
 .activity li.critical { box-shadow: inset 3px 0 0 var(--critical); background: rgba(255, 118, 118, 0.06); }
@@ -386,15 +387,18 @@ td.right, th.right { text-align: right; }
 
 /* ---------- result stamps ---------- */
 /* Inked-stamp look: uppercase, bordered, a little crooked. Status colors only. */
-.stamp { display: inline-block; font-size: var(--fs-small); font-weight: 750; letter-spacing: 0.09em; text-transform: uppercase; white-space: nowrap; line-height: 1; padding: 5px 8px 4px; border: 1.5px solid currentColor; border-radius: 5px; transform: rotate(-4deg); }
+/* One fixed width for every stamp (measured: "Needs approval" is the widest at 145px), centered, so
+   the stamp column is a straight edge. */
+.stamp { display: inline-block; width: var(--stamp-w); text-align: center; font-size: var(--fs-small); font-weight: 750; letter-spacing: 0.09em; text-transform: uppercase; white-space: nowrap; line-height: 1; padding: 5px 0 4px; border: 1.5px solid currentColor; border-radius: 5px; }
 .stamp-booked { color: var(--good); background: var(--good-soft); }
 .stamp-blocked { color: var(--blocked); background: var(--blocked-soft); border-color: var(--blocked-line); }
 .stamp-flagged { color: var(--critical); background: var(--critical-soft); }
 .stamp-approval, .stamp-unconfirmed { color: var(--warning); background: var(--warning-soft); }
 .stamp-sev-critical { color: var(--critical); background: var(--critical-soft); }
 .stamp-sev-high, .stamp-sev-medium { color: var(--warning); background: var(--warning-soft); }
-.stamp-in { animation: stampin 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.2); }
-@keyframes stampin { from { transform: rotate(-4deg) scale(1.5); opacity: 0; } 70% { transform: rotate(-4deg) scale(0.94); opacity: 1; } to { transform: rotate(-4deg) scale(1); } }
+/* Entry when a row just changed: a quick fade and settle (the global reduced-motion rule turns it off). */
+.stamp-in { animation: stampin 0.2s ease-out; }
+@keyframes stampin { from { opacity: 0; transform: scale(1.12); } to { opacity: 1; transform: scale(1); } }
 
 /* ---------- three-way match: Order ↔ Payment ↔ Delivery ---------- */
 .match { display: inline-flex; align-items: center; }
@@ -406,6 +410,9 @@ td.right, th.right { text-align: right; }
 .leg-ok { color: var(--good); border-color: var(--good-line); background: var(--good-soft); }
 .leg-failed { color: var(--critical); border-color: var(--critical-line); background: var(--critical-soft); }
 .leg-blocked { color: var(--blocked); border-color: var(--blocked-line); background: var(--blocked-soft); }
+/* The Payment chip opens the transaction on Solana: it looks like the other chips, plus a hover lift. */
+a.leg-link { cursor: pointer; text-decoration: none; transition: border-color 0.12s, filter 0.12s; }
+a.leg-link:hover { text-decoration: none; border-color: currentColor; filter: brightness(1.15); }
 
 /* ---------- needs-you chip + drawer ---------- */
 .need-chip { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px 0 11px; border-radius: 99px; border: 1px solid var(--border-strong); background: var(--raised); color: var(--text-2); cursor: pointer; font-weight: 550; white-space: nowrap; transition: border-color 0.15s, background 0.15s; }

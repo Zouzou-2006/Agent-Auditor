@@ -5,7 +5,7 @@
 
 import { useMemo, useSyncExternalStore, type KeyboardEvent } from "react";
 import type { OrderRow } from "@/lib/db-types";
-import { computeOverview, explorerTxUrl, type DashboardData, type Rules } from "@/lib/dashboard/model";
+import { computeOverview, type DashboardData, type Rules } from "@/lib/dashboard/model";
 import { etClock, lastDecisionAt, nextUtcMidnight, recentActivity, weekOutcomes, weekStats, type ActivityRow } from "@/lib/dashboard/overview";
 import { detectScenes, type Scene } from "@/lib/dashboard/scenes";
 import { bookedNote, dollars, outcomeLabel, problemNote, timeShort } from "@/lib/dashboard/words";
@@ -127,7 +127,7 @@ export default function Overview({ data, rules, gatewayWallet, now, loading, liv
 
       <section className="card" aria-labelledby="activity-h">
         <div className="card-head">
-          <h2 id="activity-h">Recent purchases</h2>
+          <h2 id="activity-h">Recent activity</h2>
           <span className="right">
             <button className="linklike" onClick={() => onNavigate("orders")}>All orders</button>
           </span>
@@ -214,8 +214,6 @@ function ActivityLine({ row, now, fresh, onOpenOrder }: { row: ActivityRow; now:
       open();
     }
   };
-  // Booked rows link to their transaction; a payment with no order has only its transaction to show.
-  const link = row.tx && row.kind === "completed" ? "verified on chain →" : row.tx && !row.order ? "view on chain →" : null;
   return (
     <li
       className={`${row.order ? "clickable" : ""}${fresh ? " fresh" : ""}${row.critical ? " critical" : ""}`}
@@ -224,21 +222,14 @@ function ActivityLine({ row, now, fresh, onOpenOrder }: { row: ActivityRow; now:
       tabIndex={row.order ? 0 : undefined}
       role={row.order ? "button" : undefined}
     >
+      {/* Up to two lines, so a long sentence wraps instead of losing its end. */}
       <span className="act-text" title={row.note ?? row.text}>
         {row.text}
-        {link && row.tx && (
-          <a className="act-link" href={explorerTxUrl(row.tx)} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>
-            {link}
-          </a>
-        )}
       </span>
-      {/* A payment with no order has no match to show; its sentence uses the room instead. The columns
-          to the right have fixed widths, so amounts and stamps still line up. */}
-      {row.match && (
-        <span className="act-match">
-          <MatchChips match={row.match} />
-        </span>
-      )}
+      {/* The Payment chip is the link to the transaction on Solana, when there is one. */}
+      <span className="act-match">
+        <MatchChips match={row.match} tx={row.tx} />
+      </span>
       <span className={`act-amount num${row.struck ? " struck" : ""}`} title={row.struck ? "Not spent: blocked before payment" : undefined}>
         {row.amount !== null ? dollars(row.amount) : ""}
       </span>

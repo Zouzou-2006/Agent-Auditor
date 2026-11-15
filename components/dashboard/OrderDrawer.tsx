@@ -66,7 +66,7 @@ export default function OrderDrawer({ order, data, now, onClose, onApprove, onEx
             <h2 id="drawer-title" className="drawer-title">
               {item.charAt(0).toUpperCase() + item.slice(1)} from {seller}
             </h2>
-            <MatchChips match={match} />
+            <MatchChips match={match} tx={t.payment?.tx_signature ?? null} />
           </div>
           <button className="btn btn-sm" style={{ marginLeft: "auto" }} onClick={() => onAsk(live)}>
             <Icon name="spark" />

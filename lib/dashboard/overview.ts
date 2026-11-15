@@ -300,6 +300,20 @@ export function threeWay(order: OrderRow, data: DashboardData): ThreeWay {
   };
 }
 
+/**
+ * The same three-way match for an exception with no order (the stolen-key case): the Order leg fails,
+ * the Payment leg is the payment read from Solana, and there is no delivery to check.
+ */
+export function noOrderMatch(exc: ExceptionRow, data: DashboardData): ThreeWay {
+  const payment = paymentOf(data, exc.tx_signature);
+  return {
+    order: "failed",
+    payment: payment ? "ok" : "none",
+    delivery: null,
+    tips: { order: "No order behind this payment", payment: payment ? "Read from Solana" : "", delivery: "" },
+  };
+}
+
 export interface ActivityRow {
   key: string;
   /** Matches Dashboard's fresh-row keys (order_id / exception_id). */
@@ -315,8 +329,8 @@ export interface ActivityRow {
   /** True for a blocked order: the amount was never spent. */
   struck: boolean;
   stamp: StampKind | null;
-  /** Three-way match for a purchase; null for a payment with no order. */
-  match: ThreeWay | null;
+  /** Three-way match: every row has one (a payment with no order shows Order ✕, Payment ✓). */
+  match: ThreeWay;
   /** Dashboard "fresh" keys that mean this row just changed (new related row or a status change). */
   freshKeys: string[];
   order: OrderRow | null;
@@ -403,7 +417,7 @@ export function recentActivity(data: DashboardData, limit = 8, now?: number): Ac
           amount: paymentOf(data, e.tx_signature)?.amount ?? null,
           struck: false,
           stamp: "flagged" as const,
-          match: null,
+          match: noOrderMatch(e, data),
           freshKeys: [e.exception_id, `status:${e.exception_id}:${e.status}`],
           order: null,
           exception: e,
