@@ -66,7 +66,7 @@ export default function Exceptions({ data, now, loading, fresh, onOpenOrder, onA
                 return (
                   <tr key={e.exception_id} className={fresh.has(e.exception_id) ? "fresh" : undefined}>
                     <td><SeverityBadge severity={e.severity} /></td>
-                    <td style={{ whiteSpace: "nowrap" }}>{EXCEPTION_TITLE[e.type]}</td>
+                    <td style={{ whiteSpace: "nowrap" }} title={e.type}>{EXCEPTION_TITLE[e.type]}</td>
                     <td style={{ maxWidth: 360 }}>{exceptionText(e, data)}</td>
                     <td>
                       {order ? (

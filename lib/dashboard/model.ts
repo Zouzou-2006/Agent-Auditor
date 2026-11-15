@@ -182,7 +182,9 @@ export interface TrailStep {
  * Decision provenance for each audit-trail step: which component decided it and how. Every step is
  * deterministic code or on-chain data; only the one-line summary is AI-written, and it never decides.
  */
-export const STEP_PROVENANCE: Record<TrailStep["key"], { source: string; basis: "deterministic" | "on-chain" | "human" }> = {
+export type ProvenanceBasis = "deterministic" | "on-chain" | "human";
+
+export const STEP_PROVENANCE: Record<TrailStep["key"], { source: string; basis: ProvenanceBasis }> = {
   rules: { source: "Rule engine · config/rules.json", basis: "deterministic" },
   review: { source: "Human approval", basis: "human" },
   quote: { source: "Seller's x402 quote · gateway checks", basis: "deterministic" },
@@ -222,6 +224,17 @@ function checksOf(delivery: DeliveryRow): Record<string, boolean> {
   return Object.fromEntries(Object.entries(c).map(([k, v]) => [k, v === true]));
 }
 
+// Trail wording lives here with the steps it describes (lib/dashboard/words.ts imports this file,
+// so importing words.ts back would make a cycle). Raw keys are deliveries.checks (SPEC section 4).
+const CHECK_LABEL: Record<string, string> = { received: "Received", format: "Format", matches_order: "Matches the order" };
+const plain = (raw: string) => raw.replace(/_/g, " ");
+
+/** "Nov 14, 7:00:05 AM ET": block times in the dashboard's display time zone. */
+function etDateTime(iso: string): string {
+  const s = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", second: "2-digit" }).format(Date.parse(iso));
+  return `${s} ET`;
+}
+
 /**
  * The audit trail for one order: every decision from the rule check to the journal entry,
  * built only from the saved rows (SPEC section 3, steps 1-8).
@@ -238,7 +251,7 @@ export function orderTrail(order: OrderRow, data: DashboardData): OrderTrail {
 
   steps.push({
     key: "rules",
-    label: "Finance rules",
+    label: "Spending rules",
     state: stage === "rules" ? "failed" : "done",
     detail:
       stage === "rules"
@@ -253,7 +266,7 @@ export function orderTrail(order: OrderRow, data: DashboardData): OrderTrail {
   const quoteSeen = order.quote_amount !== null ? `${formatUsd(order.quote_amount)} to ${shortId(order.quote_wallet, 6)}` : "";
   steps.push({
     key: "quote",
-    label: "Seller quote (HTTP 402)",
+    label: "Seller's price",
     state: stage === "quote" ? "failed" : stage === "rules" ? "skipped" : order.quote_amount !== null ? "done" : "waiting",
     detail:
       stage === "quote"
@@ -266,18 +279,18 @@ export function orderTrail(order: OrderRow, data: DashboardData): OrderTrail {
   const paymentFailed = stage === "payment";
   steps.push({
     key: "payment",
-    label: "On-chain payment",
+    label: "Payment on Solana",
     state: payment ? "done" : paymentFailed ? "failed" : order.status === "denied" ? "skipped" : "waiting",
     detail: payment
-      ? `${formatUsd(payment.amount)} matched by memo, block time ${new Date(payment.block_time).toISOString().replace("T", " ").slice(0, 19)} UTC`
+      ? `${formatUsd(payment.amount)} paid and matched to this order, ${etDateTime(payment.block_time)}`
       : paymentFailed
         ? "Payment failed. No money moved"
         : order.status === "denied"
           ? "No money moved"
           : order.status === "paying"
-            ? "Signed, waiting for settlement / Streams"
+            ? "Payment sent, waiting for Solana to confirm it"
             : order.status === "paid"
-              ? "Paid, waiting for Streams to deliver the transaction"
+              ? "Paid, waiting to see the payment on Solana"
               : "Not paid yet",
   });
 
@@ -288,7 +301,7 @@ export function orderTrail(order: OrderRow, data: DashboardData): OrderTrail {
     state: delivery ? (delivery.passed ? "done" : "failed") : order.status === "denied" ? "skipped" : "waiting",
     detail: checks
       ? Object.entries(checks)
-          .map(([k, v]) => `${k} ${v ? "✓" : "✗"}`)
+          .map(([k, v]) => `${CHECK_LABEL[k] ?? plain(k)} ${v ? "✓" : "✗"}`)
           .join(" · ")
       : order.status === "denied"
         ? "Nothing to check"
@@ -297,12 +310,12 @@ export function orderTrail(order: OrderRow, data: DashboardData): OrderTrail {
 
   steps.push({
     key: "booking",
-    label: "Booking",
+    label: "Booked to the ledger",
     state: journal.length ? "done" : exception ? "failed" : order.status === "denied" ? "skipped" : "waiting",
     detail: journal.length
       ? journal.map((j) => `Dr ${j.debit_account} / Cr ${j.credit_account} ${formatUsd(j.amount)}`).join("; ")
       : exception
-        ? `Exception ${exception.type} (${exception.severity}), ${exception.status}`
+        ? `Not booked: ${plain(exception.type)} exception (${exception.severity}), ${plain(exception.status)}`
         : order.status === "denied"
           ? "Blocked before payment: no entry needed"
           : "Waiting for payment and delivery",

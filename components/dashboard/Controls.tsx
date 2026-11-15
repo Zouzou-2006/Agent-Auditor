@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { computeOverview, formatUsd, outgoing, type DashboardData, type Rules } from "@/lib/dashboard/model";
+import { friendlyStatus, networkLabel } from "@/lib/dashboard/words";
 import { AddrLink, SellerStatusBadge } from "./ui";
 
 interface Props {
@@ -22,9 +23,11 @@ export default function Controls({ data, rules, gatewayWallet, balance, now }: P
     ["3", `Today's spend plus this order at most ${formatUsd(rules.max_per_day)}`, "over daily limit"],
     ["4", "Quote at or under the order's max", "quote over max"],
     ["5", "Quote wallet is the seller's wallet on file", "quote wallet doesn't match seller"],
-    ["6", `Paid in ${rules.asset} on ${rules.network}`, "wrong asset or network"],
-    ["·", `Over ${formatUsd(rules.human_review_over)} waits for a human Approve`, "pending_review"],
+    ["6", `Paid in ${rules.asset} on ${networkLabel(rules.network)}`, "wrong asset or network"],
+    ["·", `Over ${formatUsd(rules.human_review_over)} waits for a human Approve`, friendlyStatus("pending_review")],
   ];
+  // Raw values behind the plain words, for the tooltip on rows that rename them.
+  const rawOf: Record<string, string> = { "6": `${rules.asset} on ${rules.network}`, "·": "pending_review" };
 
   return (
     <>
@@ -58,8 +61,8 @@ export default function Controls({ data, rules, gatewayWallet, balance, now }: P
       <div className="grid grid-2">
         <section className="card" aria-labelledby="rules-h">
           <div className="card-head">
-            <h2 id="rules-h">Finance rules</h2>
-            <span className="hint">config/rules.json · hard yes/no, checked before anything is signed</span>
+            <h2 id="rules-h">Spending rules</h2>
+            <span className="hint" title="config/rules.json">Hard yes/no checks, run before anything is paid</span>
           </div>
           <div className="table-wrap">
             <table>
@@ -72,7 +75,7 @@ export default function Controls({ data, rules, gatewayWallet, balance, now }: P
               </thead>
               <tbody>
                 {ruleRows.map(([n, rule, reason]) => (
-                  <tr key={n + rule}>
+                  <tr key={n + rule} title={rawOf[n]}>
                     <td className="muted">{n}</td>
                     <td>{rule}</td>
                     <td className="mono dim">{reason}</td>
@@ -102,10 +105,7 @@ export default function Controls({ data, rules, gatewayWallet, balance, now }: P
               <tbody>
                 {data.sellers.map((s) => (
                   <tr key={s.seller_id}>
-                    <td>
-                      {s.name}
-                      <div className="cell-sub mono">{s.seller_id}</div>
-                    </td>
+                    <td title={s.seller_id}>{s.name}</td>
                     <td><AddrLink addr={s.wallet} /></td>
                     <td className="right num">{data.orders.filter((x) => x.seller_id === s.seller_id).length}</td>
                     <td className="right num">{formatUsd(out.filter((p) => p.to_wallet === s.wallet).reduce((sum, p) => sum + p.amount, 0))}</td>

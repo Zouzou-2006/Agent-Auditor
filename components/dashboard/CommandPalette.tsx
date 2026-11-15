@@ -2,8 +2,9 @@
 // Ctrl/⌘ + K: jump to any section, order or exception, ask the copilot, or refresh.
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { ExceptionRow, OrderRow } from "@/lib/db-types";
+import type { ExceptionRow, OrderRow, SellerRow } from "@/lib/db-types";
 import { formatUsd, shortId } from "@/lib/dashboard/model";
+import { EXCEPTION_STATUS_LABEL, EXCEPTION_TITLE, friendlyStatus, sellerName, SEVERITY_LABEL } from "@/lib/dashboard/words";
 import { Icon } from "./ui";
 
 export type PaletteAction =
@@ -27,11 +28,12 @@ interface Props {
   sections: readonly { id: string; label: string; icon: string }[];
   orders: OrderRow[];
   exceptions: ExceptionRow[];
+  sellers: SellerRow[];
   onRun: (action: PaletteAction) => void;
   onClose: () => void;
 }
 
-export default function CommandPalette({ sections, orders, exceptions, onRun, onClose }: Props) {
+export default function CommandPalette({ sections, orders, exceptions, sellers, onRun, onClose }: Props) {
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -44,22 +46,26 @@ export default function CommandPalette({ sections, orders, exceptions, onRun, on
       { group: "Actions", icon: "spark", label: q ? `Ask the copilot: “${query.trim()}”` : "Ask the copilot…", haystack: `ask copilot ai ${q}`, action: { kind: "ask", question: query.trim() } },
       { group: "Actions", icon: "refresh", label: "Refresh data", haystack: "refresh reload", action: { kind: "refresh" } },
       { group: "Actions", icon: "spark", label: "Generate missing AI summaries", haystack: "generate ai summaries summary explain", action: { kind: "summaries" } },
+      // Labels are plain words; the haystack keeps the raw values too, so either one finds the row.
       ...exceptions.map((e) => ({
         group: "Exceptions",
         icon: "exceptions",
-        label: `${e.type} · ${e.severity}`,
-        sub: e.status,
-        haystack: `${e.exception_id} ${e.type} ${e.severity} ${e.status} ${e.summary ?? ""}`.toLowerCase(),
+        label: `${EXCEPTION_TITLE[e.type]} · ${SEVERITY_LABEL[e.severity]}`,
+        sub: EXCEPTION_STATUS_LABEL[e.status],
+        haystack: `${e.exception_id} ${e.type} ${e.severity} ${e.status} ${EXCEPTION_TITLE[e.type]} ${EXCEPTION_STATUS_LABEL[e.status]} ${e.summary ?? ""}`.toLowerCase(),
         action: { kind: "exception", exception: e } as PaletteAction,
       })),
-      ...orders.map((o) => ({
-        group: "Orders",
-        icon: "orders",
-        label: `${shortId(o.order_id)} · ${o.seller_id} · ${formatUsd(o.max_amount)}`,
-        sub: o.deny_reason ?? o.status,
-        haystack: `${o.order_id} ${o.seller_id} ${o.item} ${o.status} ${o.deny_reason ?? ""} ${o.purpose}`.toLowerCase(),
-        action: { kind: "order", order: o } as PaletteAction,
-      })),
+      ...orders.map((o) => {
+        const seller = sellerName(o.seller_id, sellers);
+        return {
+          group: "Orders",
+          icon: "orders",
+          label: `${shortId(o.order_id)} · ${seller} · ${formatUsd(o.max_amount)}`,
+          sub: o.deny_reason ?? friendlyStatus(o.status),
+          haystack: `${o.order_id} ${o.seller_id} ${seller} ${o.item} ${o.status} ${friendlyStatus(o.status)} ${o.deny_reason ?? ""} ${o.purpose}`.toLowerCase(),
+          action: { kind: "order", order: o } as PaletteAction,
+        };
+      }),
     ];
     const words = q.split(/\s+/).filter(Boolean);
     // While typing, real matches come first and "Ask the copilot" moves to the end as the fallback.
@@ -70,7 +76,7 @@ export default function CommandPalette({ sections, orders, exceptions, onRun, on
     const caps: Record<string, number> = { Orders: 8, Exceptions: 6 };
     const seen: Record<string, number> = {};
     return matched.filter((it) => (seen[it.group] = (seen[it.group] ?? 0) + 1) <= (caps[it.group] ?? 99));
-  }, [query, sections, orders, exceptions]);
+  }, [query, sections, orders, exceptions, sellers]);
 
   useEffect(() => {
     inputRef.current?.focus();

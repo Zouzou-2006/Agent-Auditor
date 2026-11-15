@@ -5,6 +5,7 @@
 
 import { useEffect, useEffectEvent, useRef, useState, type ReactNode } from "react";
 import type { OrderRow } from "@/lib/db-types";
+import { toolLabel } from "@/lib/dashboard/words";
 import { Icon } from "./ui";
 
 interface Msg {
@@ -145,7 +146,7 @@ export default function Copilot({ context, orders, seed, onClose, onOpenOrder }:
       });
       if (!res.ok || !res.body) {
         const body = (await res.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(body?.error ?? `HTTP ${res.status}`);
+        throw new Error(body?.error ?? "The copilot couldn't be reached");
       }
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -231,7 +232,7 @@ export default function Copilot({ context, orders, seed, onClose, onOpenOrder }:
             <div key={i} className={`msg ${m.role}`}>
               {m.role === "assistant" && m.tools && m.tools.length > 0 && (
                 <div className="tools-used" aria-label="Data looked up">
-                  {m.tools.map((t, j) => <span key={j}>{t}</span>)}
+                  {m.tools.map((t, j) => <span key={j} title={t}>{toolLabel(t)}</span>)}
                 </div>
               )}
               <div className={`bubble${busy && last && m.role === "assistant" && m.content ? " caret" : ""}`}>

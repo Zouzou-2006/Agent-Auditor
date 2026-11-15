@@ -8,7 +8,7 @@ import { useEffect, useRef } from "react";
 import type { ExceptionRow, OrderRow } from "@/lib/db-types";
 import { explorerTxUrl } from "@/lib/dashboard/model";
 import type { AttentionItem } from "@/lib/dashboard/overview";
-import { dollars, EXCEPTION_TITLE, timeShort } from "@/lib/dashboard/words";
+import { dollars, EXCEPTION_TITLE, friendlyStatus, timeShort } from "@/lib/dashboard/words";
 import { fullTime, Icon, SeverityBadge } from "./ui";
 
 interface Props {
@@ -78,8 +78,8 @@ export default function AttentionDrawer({ items, now, inFlight, errors, suspende
                         <Icon name={item.kind === "pending" ? "pause" : "exceptions"} />
                       </span>
                       <div className="attn-main">
-                        <div className="attn-title">
-                          {item.kind === "pending" ? "Waiting for approval" : EXCEPTION_TITLE[item.exception.type]}
+                        <div className="attn-title" title={item.kind === "pending" ? item.order.status : item.exception.type}>
+                          {item.kind === "pending" ? friendlyStatus(item.order.status) : EXCEPTION_TITLE[item.exception.type]}
                           {item.amount !== null && <span className="num attn-amount">{dollars(item.amount)}</span>}
                         </div>
                         <div className="attn-text">{item.text}</div>

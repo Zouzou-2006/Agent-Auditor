@@ -2,6 +2,7 @@
 // a scene shows as "seen" only when the data that proves it exists. Pure, unit-tested.
 
 import type { DashboardData } from "./model";
+import { EXCEPTION_STATUS_LABEL, EXCEPTION_TITLE } from "./words";
 
 export type SceneId = "clean" | "empty" | "injection" | "stolen";
 export type SceneState = "proven" | "in_progress" | "not_yet";
@@ -42,7 +43,7 @@ export function detectScenes(data: DashboardData): Scene[] {
       id: "clean",
       n: 1,
       title: "Clean purchase",
-      proves: "Rules → x402 payment → on-chain match → delivery checks → journal entry",
+      proves: "Spending rules → payment → matched on Solana → delivery checks → journal entry",
       state: booked ? "proven" : paid ? "in_progress" : "not_yet",
       evidence: booked ? `Order ${booked.order_id.slice(0, 8)} booked` : paid ? `Order ${paid.order_id.slice(0, 8)} paid, waiting for booking` : "No purchase yet",
       target: booked ? { kind: "order", id: booked.order_id } : paid ? { kind: "order", id: paid.order_id } : null,
@@ -53,7 +54,7 @@ export function detectScenes(data: DashboardData): Scene[] {
       title: "Empty delivery",
       proves: "Paid but nothing delivered → exception → Block Seller",
       state: empty && (empty.status === "seller_blocked" || blockedRetry) ? "proven" : empty ? "in_progress" : "not_yet",
-      evidence: empty ? (empty.status === "seller_blocked" ? "Seller blocked, loss booked" : "nothing_delivered exception open") : "No empty delivery yet",
+      evidence: empty ? (empty.status === "seller_blocked" ? "Seller blocked, loss booked" : `${EXCEPTION_TITLE.nothing_delivered} exception, ${EXCEPTION_STATUS_LABEL.open.toLowerCase()}`) : "No empty delivery yet",
       target: empty ? { kind: "exception", id: empty.exception_id } : null,
     },
     {
@@ -69,9 +70,9 @@ export function detectScenes(data: DashboardData): Scene[] {
       id: "stolen",
       n: 4,
       title: "Stolen key",
-      proves: "A payment that skips the gateway → critical no_order exception within seconds",
+      proves: "A payment that skips the gateway → critical exception within seconds",
       state: stolen ? "proven" : "not_yet",
-      evidence: stolen ? `Critical no_order exception (${stolen.status})` : "No unmatched payment yet",
+      evidence: stolen ? `Critical: ${EXCEPTION_TITLE.no_order.toLowerCase()} (${EXCEPTION_STATUS_LABEL[stolen.status].toLowerCase()})` : "No unmatched payment yet",
       target: stolen ? { kind: "exception", id: stolen.exception_id } : null,
     },
   ];

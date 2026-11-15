@@ -4,7 +4,7 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import type { ExceptionSeverity, ExceptionStatus, OrderStatus, SellerStatus } from "@/lib/db-types";
 import { explorerAddressUrl, explorerTxUrl, shortId } from "@/lib/dashboard/model";
-import { EXCEPTION_STATUS_LABEL, friendlyStatus, timeShort } from "@/lib/dashboard/words";
+import { EXCEPTION_STATUS_LABEL, friendlyStatus, SELLER_STATUS_LABEL, SEVERITY_LABEL, timeShort } from "@/lib/dashboard/words";
 
 const paths: Record<string, ReactNode> = {
   overview: <path d="M3 13h4v8H3zM10 9h4v12h-4zM17 4h4v17h-4z" />,
@@ -67,23 +67,27 @@ export const ORDER_TONE_VAR: Record<OrderStatus, string> = {
   exception: "var(--warning)",
 };
 
-function Badge({ tone, children }: { tone: string; children: ReactNode }) {
+/** Every badge shows plain words; `raw` (the stored value) goes in the tooltip so the team can still see it. */
+function Badge({ tone, raw, children }: { tone: string; raw: string; children: ReactNode }) {
   return (
-    <span className={`badge tone-${tone}`}>
+    <span className={`badge tone-${tone}`} title={raw}>
       <span className="dot" />
       {children}
     </span>
   );
 }
 
-/** Raw status code: used only in the order drawer, where the exact state matters. */
-export const StatusBadge = ({ status }: { status: OrderStatus }) => <Badge tone={ORDER_TONE[status]}>{status}</Badge>;
-/** Plain-language status ("Completed", "Waiting for approval", …): the label everywhere else. */
-export const FriendlyStatusBadge = ({ status }: { status: OrderStatus }) => <Badge tone={ORDER_TONE[status]}>{friendlyStatus(status)}</Badge>;
-export const SeverityBadge = ({ severity }: { severity: ExceptionSeverity }) => <Badge tone={SEVERITY_TONE[severity]}>{severity}</Badge>;
-export const ExceptionStatusBadge = ({ status }: { status: ExceptionStatus }) => <Badge tone={EXC_STATUS_TONE[status]}>{EXCEPTION_STATUS_LABEL[status]}</Badge>;
+export const StatusBadge = ({ status }: { status: OrderStatus }) => (
+  <Badge tone={ORDER_TONE[status]} raw={status}>{friendlyStatus(status)}</Badge>
+);
+export const SeverityBadge = ({ severity }: { severity: ExceptionSeverity }) => (
+  <Badge tone={SEVERITY_TONE[severity]} raw={severity}>{SEVERITY_LABEL[severity]}</Badge>
+);
+export const ExceptionStatusBadge = ({ status }: { status: ExceptionStatus }) => (
+  <Badge tone={EXC_STATUS_TONE[status]} raw={status}>{EXCEPTION_STATUS_LABEL[status]}</Badge>
+);
 export const SellerStatusBadge = ({ status }: { status: SellerStatus }) => (
-  <Badge tone={status === "approved" ? "good" : "neutral"}>{status}</Badge>
+  <Badge tone={status === "approved" ? "good" : "neutral"} raw={status}>{SELLER_STATUS_LABEL[status]}</Badge>
 );
 
 export function TxLink({ sig }: { sig: string | null }) {

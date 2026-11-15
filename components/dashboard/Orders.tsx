@@ -3,8 +3,8 @@
 import { useMemo } from "react";
 import type { OrderRow, OrderStatus } from "@/lib/db-types";
 import { filterOrders, formatUsd, ORDER_STATUSES, paymentTxByOrder, shortId, type DashboardData, type OrderFilter } from "@/lib/dashboard/model";
-import { friendlyStatus, itemPhrase, sellerName } from "@/lib/dashboard/words";
-import { AddrLink, Empty, FriendlyStatusBadge, fullTime, Icon, SkeletonRows, timeAgo, TxLink } from "./ui";
+import { friendlyStatus, itemLabel, sellerName } from "@/lib/dashboard/words";
+import { AddrLink, Empty, fullTime, Icon, SkeletonRows, StatusBadge, timeAgo, TxLink } from "./ui";
 
 /** Filter labels: plain words, with the two "Processing" steps told apart. */
 const FILTER_LABEL: Record<OrderStatus, string> = {
@@ -16,9 +16,6 @@ const FILTER_LABEL: Record<OrderStatus, string> = {
   exception: friendlyStatus("exception"),
 };
 
-/** "a SOL price" -> "SOL price" for a table cell. */
-const itemLabel = (o: OrderRow) => itemPhrase(o).replace(/^an? /, "");
-
 interface Props {
   data: DashboardData;
   now: number;
@@ -28,13 +25,6 @@ interface Props {
   onFilter: (f: OrderFilter) => void;
   onOpen: (order: OrderRow) => void;
   onApprove: (order: OrderRow) => void;
-}
-
-function paramsText(params: unknown): string {
-  if (!params || typeof params !== "object") return "";
-  return Object.entries(params as Record<string, unknown>)
-    .map(([k, v]) => `${k}=${String(v)}`)
-    .join(" · ");
 }
 
 export default function Orders({ data, now, loading, fresh, filter, onFilter, onOpen, onApprove }: Props) {
@@ -122,11 +112,8 @@ export default function Orders({ data, now, loading, fresh, filter, onFilter, on
                     {timeAgo(o.created_at, now)}
                   </td>
                   <td className="mono">{shortId(o.order_id)}</td>
-                  <td>{sellerName(o.seller_id, data.sellers)}</td>
-                  <td>
-                    {itemLabel(o)}
-                    <div className="cell-sub mono">{paramsText(o.params)}</div>
-                  </td>
+                  <td title={o.seller_id}>{sellerName(o.seller_id, data.sellers)}</td>
+                  <td title={`${o.item} ${JSON.stringify(o.params)}`}>{itemLabel(o)}</td>
                   <td className="right num">{formatUsd(o.max_amount)}</td>
                   <td className="right num">
                     {formatUsd(o.quote_amount)}
@@ -140,7 +127,7 @@ export default function Orders({ data, now, loading, fresh, filter, onFilter, on
                     <TxLink sig={paymentTx.get(o.order_id) ?? null} />
                   </td>
                   <td>
-                    <FriendlyStatusBadge status={o.status} />
+                    <StatusBadge status={o.status} />
                   </td>
                   <td style={{ maxWidth: 260 }}>
                     {o.deny_reason ? (

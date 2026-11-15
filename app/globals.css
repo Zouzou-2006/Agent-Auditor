@@ -332,6 +332,11 @@ td.right, th.right { text-align: right; }
 .trail .t-label { font-weight: 550; }
 .trail .skipped .t-label { color: var(--muted); }
 .trail .t-detail { font-size: 12.5px; color: var(--text-2); overflow-wrap: anywhere; margin-top: 2px; }
+/* Which system decided the step: for the team, so it shows only on hover or keyboard focus. */
+.trail .t-source { display: none; font-size: 11px; margin-top: 2px; }
+.trail li:hover .t-source, .trail li:focus-within .t-source { display: block; }
+.trail li:focus-visible { outline: none; }
+.trail li:focus-visible .t-label { text-decoration: underline; text-underline-offset: 3px; }
 .prov { display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; color: var(--muted); border: 1px solid var(--border); border-radius: 99px; padding: 0 7px; height: 18px; white-space: nowrap; }
 .prov i { width: 5px; height: 5px; border-radius: 50%; background: var(--muted); }
 .prov.deterministic i { background: var(--good); }

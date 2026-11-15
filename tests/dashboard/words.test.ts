@@ -2,14 +2,26 @@ import { describe, expect, it } from "vitest";
 import type { ExceptionRow, OrderRow, PaymentRow, SellerRow } from "../../lib/db-types";
 import {
   dollars,
+  EXCEPTION_STATUS_LABEL,
+  EXCEPTION_TITLE,
   exceptionSentence,
   friendlyStatus,
+  itemLabel,
   itemPhrase,
+  networkLabel,
   orderSentence,
+  paramsText,
+  PROVENANCE_LABEL,
   reviewSentence,
+  SELLER_STATUS_LABEL,
   sellerName,
+  SEVERITY_LABEL,
+  shortDate,
+  statusLabel,
   timeShort,
+  toolLabel,
 } from "../../lib/dashboard/words";
+import { ORDER_STATUSES } from "../../lib/dashboard/model";
 
 const sellers: SellerRow[] = [
   { seller_id: "dataco", name: "DataCo", url: "", wallet: "W1", status: "approved" },
@@ -107,12 +119,78 @@ describe("exceptionSentence", () => {
 
 describe("friendlyStatus", () => {
   it("maps every status", () => {
-    expect(friendlyStatus("booked")).toBe("Completed");
+    expect(friendlyStatus("booked")).toBe("Booked");
     expect(friendlyStatus("denied")).toBe("Blocked");
     expect(friendlyStatus("paying")).toBe("Processing");
     expect(friendlyStatus("paid")).toBe("Processing");
     expect(friendlyStatus("pending_review")).toBe("Waiting for approval");
     expect(friendlyStatus("exception")).toBe("Problem found");
+  });
+});
+
+describe("statusLabel", () => {
+  it("words an order status from an API reply and passes anything else through", () => {
+    expect(statusLabel("pending_review")).toBe("Waiting for approval");
+    expect(statusLabel("booked")).toBe("Booked");
+    expect(statusLabel("something_new")).toBe("something_new");
+    expect(statusLabel("toString")).toBe("toString");
+  });
+});
+
+describe("itemLabel / shortDate / paramsText", () => {
+  it("writes a price quote as ticker, price and day", () => {
+    expect(itemLabel(order({ params: { ticker: "sol", date: "2026-11-14" } }))).toBe("SOL price for Nov 14");
+    expect(itemLabel(order({ params: { ticker: "SOL" } }))).toBe("SOL price");
+    expect(itemLabel(order({ params: { ticker: "SOL", date: "yesterday" } }))).toBe("SOL price");
+  });
+
+  it("turns any other item name into words", () => {
+    expect(itemLabel(order({ item: "premium_report", params: {} }))).toBe("premium report");
+  });
+
+  it("reads a calendar date without shifting it a day", () => {
+    expect(shortDate("2026-11-14")).toBe("Nov 14");
+    expect(shortDate("2026-01-01")).toBe("Jan 1");
+    expect(shortDate("2026-02-30")).toBeNull();
+    expect(shortDate("2026-11-14T12:00:00Z")).toBeNull();
+  });
+
+  it("lists what was asked for without JSON or snake_case", () => {
+    expect(paramsText({ ticker: "SOL", date: "2026-11-14" })).toBe("Ticker SOL · Date Nov 14");
+    expect(paramsText({ report_id: 7 })).toBe("Report id 7");
+    expect(paramsText({})).toBe("—");
+    expect(paramsText(null)).toBe("—");
+  });
+});
+
+describe("label maps", () => {
+  const snake = /[a-z]_[a-z]/;
+  const all = [
+    ...ORDER_STATUSES.map(friendlyStatus),
+    ...Object.values(EXCEPTION_TITLE),
+    ...Object.values(EXCEPTION_STATUS_LABEL),
+    ...Object.values(SEVERITY_LABEL),
+    ...Object.values(SELLER_STATUS_LABEL),
+    ...Object.values(PROVENANCE_LABEL),
+  ];
+
+  it("has no snake_case anywhere", () => {
+    for (const label of all) expect(label).not.toMatch(snake);
+  });
+
+  it("capitalizes severity and statuses, and names who decided each step", () => {
+    expect(SEVERITY_LABEL).toEqual({ critical: "Critical", high: "High", medium: "Medium" });
+    expect(EXCEPTION_STATUS_LABEL.seller_blocked).toBe("Seller blocked");
+    expect(SELLER_STATUS_LABEL).toEqual({ approved: "Approved", blocked: "Blocked" });
+    expect(PROVENANCE_LABEL).toEqual({ deterministic: "Rule", "on-chain": "Blockchain", human: "Person" });
+  });
+
+  it("names the copilot's lookups and the devnet network", () => {
+    expect(toolLabel("get_order")).toBe("Order details");
+    expect(toolLabel("daily_spend")).toBe("Today's spending");
+    expect(toolLabel("brand_new_tool")).toBe("brand new tool");
+    expect(networkLabel("solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1")).toBe("Solana devnet");
+    expect(networkLabel("solana:other")).toBe("solana:other");
   });
 });
 

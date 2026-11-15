@@ -10,6 +10,7 @@ import { loadDashboardData } from "@/lib/dashboard/load";
 import { EMPTY_DATA, formatUsd, ORDER_STATUSES, shortId, type DashboardData, type OrderFilter, type Rules } from "@/lib/dashboard/model";
 import { attentionItems, attentionLevel } from "@/lib/dashboard/overview";
 import type { Scene } from "@/lib/dashboard/scenes";
+import { itemLabel, sellerName, statusLabel } from "@/lib/dashboard/words";
 import AttentionDrawer from "./AttentionDrawer";
 import CommandPalette, { type PaletteAction } from "./CommandPalette";
 import Controls from "./Controls";
@@ -282,7 +283,7 @@ export default function Dashboard({ rules, gatewayWallet }: { rules: Rules; gate
         confirmLabel: `Approve and pay up to ${formatUsd(order.max_amount)}`,
         body: (
           <>
-            <p>{order.seller_id} · {order.item} · max {formatUsd(order.max_amount)}</p>
+            <p>{sellerName(order.seller_id, data.sellers)} · {itemLabel(order)} · max {formatUsd(order.max_amount)}</p>
             <p style={{ marginTop: 8 }}>The gateway re-checks the rules, asks the seller for a quote and pays it in USDC on devnet. This can take up to about 20 seconds.</p>
           </>
         ),
@@ -290,15 +291,15 @@ export default function Dashboard({ rules, gatewayWallet }: { rules: Rules; gate
           track(order.order_id, async () => {
             const r = await post(`/api/orders/${order.order_id}/approve`, {});
             if (r.ok) {
-              toast(`Order ${shortId(order.order_id)}: ${String(r.json.status)}${r.json.reason ? ` · ${String(r.json.reason)}` : ""}`, r.json.status === "denied");
+              toast(`Order ${shortId(order.order_id)}: ${statusLabel(String(r.json.status))}${r.json.reason ? ` · ${String(r.json.reason)}` : ""}`, r.json.status === "denied");
               return null;
             }
-            const error = `Approve failed (${r.status}): ${String(r.json.error ?? "error")}`;
+            const error = `Approve failed: ${String(r.json.error ?? "error")}`;
             toast(error, true);
             return error;
           }),
       }),
-    [post, toast, track],
+    [data.sellers, post, toast, track],
   );
 
   const exceptionAction = useCallback(
@@ -320,7 +321,7 @@ export default function Dashboard({ rules, gatewayWallet }: { rules: Rules; gate
               toast(action === "approve" ? "Exception approved and booked" : "Seller blocked and loss booked");
               return null;
             }
-            const error = `Action failed (${r.status}): ${String(r.json.error ?? "error")}`;
+            const error = `Action failed: ${String(r.json.error ?? "error")}`;
             toast(error, true);
             return error;
           }),
@@ -332,7 +333,7 @@ export default function Dashboard({ rules, gatewayWallet }: { rules: Rules; gate
     async (order?: OrderRow) => {
       try {
         const r = await post("/api/summaries", order ? { order_id: order.order_id } : {});
-        if (!r.ok) toast(`Summaries failed (${r.status}): ${String(r.json.error ?? "error")}`, true);
+        if (!r.ok) toast(`Summaries failed: ${String(r.json.error ?? "error")}`, true);
         else {
           const n = Number(r.json.orders ?? 0) + Number(r.json.exceptions ?? 0);
           toast(n ? `Wrote ${n} AI summar${n === 1 ? "y" : "ies"}` : "Nothing new to summarize");
@@ -535,7 +536,7 @@ export default function Dashboard({ rules, gatewayWallet }: { rules: Rules; gate
         <Copilot key={copilot.key} context={copilotContext} orders={data.orders} seed={copilot.seed} onClose={closeCopilot} onOpenOrder={openOrderById} />
       )}
 
-      {palette && <CommandPalette sections={SECTIONS} orders={data.orders} exceptions={data.exceptions} onRun={runPalette} onClose={() => setPalette(false)} />}
+      {palette && <CommandPalette sections={SECTIONS} orders={data.orders} exceptions={data.exceptions} sellers={data.sellers} onRun={runPalette} onClose={() => setPalette(false)} />}
       {confirm && <ConfirmDialog request={confirm} busy={confirmBusy} onCancel={() => setConfirm(null)} onConfirm={runConfirm} />}
 
       <div className="toasts" role="status" aria-live="polite">

@@ -2,9 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ExceptionRow, OrderRow } from "@/lib/db-types";
-import { formatUsd, orderTrail, STEP_PROVENANCE, type DashboardData } from "@/lib/dashboard/model";
+import { formatUsd, orderTrail, shortId, STEP_PROVENANCE, type DashboardData } from "@/lib/dashboard/model";
 import { exceptionText, orderText } from "@/lib/dashboard/overview";
-import { EXCEPTION_TITLE, itemPhrase, sellerName } from "@/lib/dashboard/words";
+import { EXCEPTION_TITLE, itemLabel, paramsText, PROVENANCE_LABEL, sellerName } from "@/lib/dashboard/words";
 import { AddrLink, ExceptionStatusBadge, fullTime, Icon, SellerStatusBadge, SeverityBadge, StatusBadge, TxLink } from "./ui";
 
 interface Props {
@@ -27,7 +27,7 @@ export default function OrderDrawer({ order, data, onClose, onApprove, onExcepti
   const closeRef = useRef<HTMLButtonElement>(null);
   const [copied, setCopied] = useState(false);
   const seller = sellerName(live.seller_id, data.sellers);
-  const item = itemPhrase(live).replace(/^an? /, "");
+  const item = itemLabel(live);
   const aiSummary = live.summary ?? t.exception?.summary ?? null;
 
   useEffect(() => {
@@ -60,8 +60,8 @@ export default function OrderDrawer({ order, data, onClose, onApprove, onExcepti
             <h2 id="drawer-title" style={{ margin: 0, fontSize: 15 }}>
               {item.charAt(0).toUpperCase() + item.slice(1)} from {seller}
             </h2>
-            <button className="mono muted" onClick={copy} style={{ background: "none", border: 0, padding: 0, cursor: "pointer", textAlign: "left" }} title="Copy order_id">
-              {live.order_id} {copied ? "· copied" : ""}
+            <button className="muted" onClick={copy} style={{ background: "none", border: 0, padding: 0, cursor: "pointer", textAlign: "left" }} title={`${live.order_id} (click to copy)`}>
+              Order <span className="mono">{shortId(live.order_id)}</span> {copied ? "· copied" : ""}
             </button>
           </div>
           <button className="btn btn-sm" style={{ marginLeft: "auto" }} onClick={() => onAsk(live)}>
@@ -124,20 +124,20 @@ export default function OrderDrawer({ order, data, onClose, onApprove, onExcepti
               {t.steps.map((s) => {
                 const p = STEP_PROVENANCE[s.key];
                 return (
-                  <li key={s.key} className={s.state}>
+                  <li key={s.key} className={s.state} tabIndex={0}>
                     <span className="node" aria-label={s.state}>
                       <Icon name={STEP_ICON[s.state]} />
                     </span>
                     <div>
                       <div className="t-row">
                         <span className="t-label">{s.label}</span>
-                        <span className={`prov ${p.basis}`} title={`Decided by: ${p.source}`}>
+                        <span className={`prov ${p.basis}`} title={`Decided by: ${p.source} (${p.basis})`}>
                           <i />
-                          {p.basis}
+                          {PROVENANCE_LABEL[p.basis]}
                         </span>
                       </div>
                       <div className="t-detail">{s.detail}</div>
-                      <div className="cell-sub" style={{ fontSize: 11 }}>{p.source}</div>
+                      <div className="t-source cell-sub">{p.source}</div>
                     </div>
                   </li>
                 );
@@ -149,12 +149,12 @@ export default function OrderDrawer({ order, data, onClose, onApprove, onExcepti
             <h3>Order</h3>
             <dl className="kv">
               <dt>Seller</dt>
-              <dd style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <dd style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }} title={live.seller_id}>
                 {seller}
                 {t.seller && <SellerStatusBadge status={t.seller.status} />}
               </dd>
-              <dt>Params</dt>
-              <dd className="mono">{JSON.stringify(live.params)}</dd>
+              <dt>Asked for</dt>
+              <dd title={`${live.item} ${JSON.stringify(live.params)}`}>{paramsText(live.params)}</dd>
               <dt>Purpose</dt>
               <dd>{live.purpose}</dd>
               <dt>Max amount</dt>
@@ -179,8 +179,8 @@ export default function OrderDrawer({ order, data, onClose, onApprove, onExcepti
                 <dt>From → to</dt>
                 <dd><AddrLink addr={t.payment.from_wallet} /> → <AddrLink addr={t.payment.to_wallet} /></dd>
                 <dt>Memo</dt>
-                <dd className="mono">{t.payment.memo ?? "—"}</dd>
-                <dt>Block time</dt>
+                <dd className="mono" title={t.payment.memo ?? undefined}>{shortId(t.payment.memo)}</dd>
+                <dt>Paid at</dt>
                 <dd>{fullTime(t.payment.block_time)}</dd>
               </dl>
             </div>
@@ -189,7 +189,7 @@ export default function OrderDrawer({ order, data, onClose, onApprove, onExcepti
           {t.delivery && (
             <div>
               <h3>Delivery ({t.delivery.passed ? "passed" : "failed"})</h3>
-              <div className="code">{t.delivery.body || "(empty body)"}</div>
+              <div className="code">{t.delivery.body || "(the seller sent nothing)"}</div>
             </div>
           )}
 
@@ -223,7 +223,7 @@ export default function OrderDrawer({ order, data, onClose, onApprove, onExcepti
             <div>
               <h3>Exception</h3>
               <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                <span>{EXCEPTION_TITLE[t.exception.type]}</span>
+                <span title={t.exception.type}>{EXCEPTION_TITLE[t.exception.type]}</span>
                 <SeverityBadge severity={t.exception.severity} />
                 <ExceptionStatusBadge status={t.exception.status} />
                 {t.exception.status === "open" && t.exception.type !== "no_order" && (
