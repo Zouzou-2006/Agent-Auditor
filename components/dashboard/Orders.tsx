@@ -3,7 +3,21 @@
 import { useMemo } from "react";
 import type { OrderRow, OrderStatus } from "@/lib/db-types";
 import { filterOrders, formatUsd, ORDER_STATUSES, paymentTxByOrder, shortId, type DashboardData, type OrderFilter } from "@/lib/dashboard/model";
-import { AddrLink, Empty, fullTime, Icon, SkeletonRows, StatusBadge, timeAgo, TxLink } from "./ui";
+import { friendlyStatus, itemPhrase, sellerName } from "@/lib/dashboard/words";
+import { AddrLink, Empty, FriendlyStatusBadge, fullTime, Icon, SkeletonRows, timeAgo, TxLink } from "./ui";
+
+/** Filter labels: plain words, with the two "Processing" steps told apart. */
+const FILTER_LABEL: Record<OrderStatus, string> = {
+  pending_review: friendlyStatus("pending_review"),
+  paying: `${friendlyStatus("paying")} · sending payment`,
+  paid: `${friendlyStatus("paid")} · confirming on chain`,
+  booked: friendlyStatus("booked"),
+  denied: friendlyStatus("denied"),
+  exception: friendlyStatus("exception"),
+};
+
+/** "a SOL price" -> "SOL price" for a table cell. */
+const itemLabel = (o: OrderRow) => itemPhrase(o).replace(/^an? /, "");
 
 interface Props {
   data: DashboardData;
@@ -54,7 +68,7 @@ export default function Orders({ data, now, loading, fresh, filter, onFilter, on
             <option value="all">All statuses</option>
             {ORDER_STATUSES.map((s) => (
               <option key={s} value={s}>
-                {s}
+                {FILTER_LABEL[s]}
               </option>
             ))}
           </select>
@@ -65,7 +79,7 @@ export default function Orders({ data, now, loading, fresh, filter, onFilter, on
             <option value="all">All sellers</option>
             {sellers.map((s) => (
               <option key={s} value={s}>
-                {s}
+                {sellerName(s, data.sellers)}
               </option>
             ))}
           </select>
@@ -108,9 +122,9 @@ export default function Orders({ data, now, loading, fresh, filter, onFilter, on
                     {timeAgo(o.created_at, now)}
                   </td>
                   <td className="mono">{shortId(o.order_id)}</td>
-                  <td>{o.seller_id}</td>
+                  <td>{sellerName(o.seller_id, data.sellers)}</td>
                   <td>
-                    {o.item}
+                    {itemLabel(o)}
                     <div className="cell-sub mono">{paramsText(o.params)}</div>
                   </td>
                   <td className="right num">{formatUsd(o.max_amount)}</td>
@@ -126,7 +140,7 @@ export default function Orders({ data, now, loading, fresh, filter, onFilter, on
                     <TxLink sig={paymentTx.get(o.order_id) ?? null} />
                   </td>
                   <td>
-                    <StatusBadge status={o.status} />
+                    <FriendlyStatusBadge status={o.status} />
                   </td>
                   <td style={{ maxWidth: 260 }}>
                     {o.deny_reason ? (

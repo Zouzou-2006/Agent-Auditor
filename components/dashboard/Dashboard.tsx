@@ -8,7 +8,9 @@ import type { ExceptionRow, OrderRow, OrderStatus } from "@/lib/db-types";
 import { getBrowserClient } from "@/lib/db-browser";
 import { loadDashboardData } from "@/lib/dashboard/load";
 import { EMPTY_DATA, formatUsd, ORDER_STATUSES, shortId, type DashboardData, type OrderFilter, type Rules } from "@/lib/dashboard/model";
+import { attentionItems, attentionLevel } from "@/lib/dashboard/overview";
 import type { Scene } from "@/lib/dashboard/scenes";
+import AttentionDrawer from "./AttentionDrawer";
 import CommandPalette, { type PaletteAction } from "./CommandPalette";
 import Controls from "./Controls";
 import Copilot from "./Copilot";
@@ -36,6 +38,31 @@ interface Toast {
 }
 
 const DEVNET_RPC = "https://api.devnet.solana.com"; // public devnet RPC, read-only balance lookup
+const AUTO_OPEN_KEY = "agent-auditor.attention.auto-opened";
+
+/** True the first time it's called in this browser session; false after that, including after a reload. */
+function claimAutoOpen(memory: { current: boolean }): boolean {
+  if (memory.current) return false;
+  memory.current = true;
+  try {
+    if (sessionStorage.getItem(AUTO_OPEN_KEY)) return false;
+    sessionStorage.setItem(AUTO_OPEN_KEY, "1");
+  } catch {
+    // Storage blocked (private mode): the in-memory flag above still limits it to once per page.
+  }
+  return true;
+}
+
+function withoutKey(record: Record<string, string>, key: string): Record<string, string> {
+  const next = { ...record };
+  delete next[key];
+  return next;
+}
+
+function isTyping(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
+}
 
 function rowKeys(d: DashboardData): Set<string> {
   return new Set([
@@ -65,7 +92,12 @@ export default function Dashboard({ rules, gatewayWallet }: { rules: Rules; gate
   const [unseen, setUnseen] = useState(false);
   const [palette, setPalette] = useState(false);
   const [balance, setBalance] = useState<number | null>(null);
+  const [attnOpen, setAttnOpen] = useState(false);
+  const [inFlight, setInFlight] = useState<Set<string>>(new Set());
+  const [actionErrors, setActionErrors] = useState<Record<string, string>>({});
   const known = useRef<Set<string> | null>(null);
+  const knownCritical = useRef<Set<string> | null>(null);
+  const autoOpened = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const copilotOpen = useRef(false);
   useEffect(() => {
@@ -91,6 +123,17 @@ export default function Dashboard({ rules, gatewayWallet }: { rules: Rules; gate
         }
       }
       known.current = keys;
+      // Auto-open "needs you" once per session, the first time a NEW critical exception appears.
+      // The first load only records what already exists, so a reload never opens it.
+      const critical = next.exceptions.filter((e) => e.status === "open" && e.severity === "critical").map((e) => e.exception_id);
+      if (knownCritical.current === null) {
+        knownCritical.current = new Set(critical);
+      } else {
+        const seen = knownCritical.current;
+        const isNew = critical.some((id) => !seen.has(id));
+        for (const id of critical) seen.add(id);
+        if (isNew && claimAutoOpen(autoOpened)) setAttnOpen(true);
+      }
       setData(next);
       setError(null);
       setUpdatedAt(Date.now());
@@ -177,6 +220,9 @@ export default function Dashboard({ rules, gatewayWallet }: { rules: Rules; gate
         e.preventDefault();
         setUnseen(false);
         setCopilot((c) => ({ ...c, open: !c.open, seed: undefined }));
+      } else if (!mod && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "n" && !isTyping(e.target)) {
+        e.preventDefault();
+        setAttnOpen((open) => !open);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -209,6 +255,26 @@ export default function Dashboard({ rules, gatewayWallet }: { rules: Rules; gate
     return { ok: res.ok, status: res.status, json };
   }, []);
 
+  // Marks a request in flight for one order/exception (so its buttons disable) and keeps the
+  // server's error text for it, shown inline in the "needs you" drawer.
+  const track = useCallback(async (key: string, run: () => Promise<string | null>) => {
+    setInFlight((s) => new Set(s).add(key));
+    setActionErrors((e) => withoutKey(e, key));
+    try {
+      const error = await run();
+      if (error) setActionErrors((e) => ({ ...e, [key]: error }));
+    } catch (err) {
+      setActionErrors((e) => ({ ...e, [key]: "Request failed: is the server running?" }));
+      throw err;
+    } finally {
+      setInFlight((s) => {
+        const next = new Set(s);
+        next.delete(key);
+        return next;
+      });
+    }
+  }, []);
+
   const approveOrder = useCallback(
     (order: OrderRow) =>
       setConfirm({
@@ -220,13 +286,19 @@ export default function Dashboard({ rules, gatewayWallet }: { rules: Rules; gate
             <p style={{ marginTop: 8 }}>The gateway re-checks the rules, asks the seller for a quote and pays it in USDC on devnet. This can take up to about 20 seconds.</p>
           </>
         ),
-        run: async () => {
-          const r = await post(`/api/orders/${order.order_id}/approve`, {});
-          if (r.ok) toast(`Order ${shortId(order.order_id)}: ${String(r.json.status)}${r.json.reason ? ` · ${String(r.json.reason)}` : ""}`, r.json.status === "denied");
-          else toast(`Approve failed (${r.status}): ${String(r.json.error ?? "error")}`, true);
-        },
+        run: () =>
+          track(order.order_id, async () => {
+            const r = await post(`/api/orders/${order.order_id}/approve`, {});
+            if (r.ok) {
+              toast(`Order ${shortId(order.order_id)}: ${String(r.json.status)}${r.json.reason ? ` · ${String(r.json.reason)}` : ""}`, r.json.status === "denied");
+              return null;
+            }
+            const error = `Approve failed (${r.status}): ${String(r.json.error ?? "error")}`;
+            toast(error, true);
+            return error;
+          }),
       }),
-    [post, toast],
+    [post, toast, track],
   );
 
   const exceptionAction = useCallback(
@@ -241,13 +313,19 @@ export default function Dashboard({ rules, gatewayWallet }: { rules: Rules; gate
           ) : (
             <p>Blocks the seller, so its next order is denied with “seller blocked”, and books the loss: debit Loss on undelivered purchases, credit USDC - agent wallet.</p>
           ),
-        run: async () => {
-          const r = await post(`/api/exceptions/${exc.exception_id}`, { action });
-          if (r.ok) toast(action === "approve" ? "Exception approved and booked" : "Seller blocked and loss booked");
-          else toast(`Action failed (${r.status}): ${String(r.json.error ?? "error")}`, true);
-        },
+        run: () =>
+          track(exc.exception_id, async () => {
+            const r = await post(`/api/exceptions/${exc.exception_id}`, { action });
+            if (r.ok) {
+              toast(action === "approve" ? "Exception approved and booked" : "Seller blocked and loss booked");
+              return null;
+            }
+            const error = `Action failed (${r.status}): ${String(r.json.error ?? "error")}`;
+            toast(error, true);
+            return error;
+          }),
       }),
-    [post, toast],
+    [post, toast, track],
   );
 
   const summarize = useCallback(
@@ -326,6 +404,9 @@ export default function Dashboard({ rules, gatewayWallet }: { rules: Rules; gate
     }),
     [data.orders, openExceptions],
   );
+  const attention = useMemo(() => attentionItems(data, rules), [data, rules]);
+  const attnLevel = attentionLevel(attention);
+  const closeAttention = useCallback(() => setAttnOpen(false), []);
   const title = SECTIONS.find((s) => s.id === section)?.label ?? "Overview";
   const liveState: Live = error && live !== "live" ? "offline" : live;
   const copilotContext = useMemo(() => ({ section, order: drawer }), [section, drawer]);
@@ -365,9 +446,19 @@ export default function Dashboard({ rules, gatewayWallet }: { rules: Rules; gate
 
       <div className="main">
         <header className="topbar">
-          <h1>{title}</h1>
-          <span className="crumb hide-sm">· Agent Auditor</span>
+          {/* On the Overview the hero strip is the heading; other sections keep the title line. */}
+          <h1 className={section === "overview" ? "sr-only" : undefined}>{title}</h1>
+          {section !== "overview" && <span className="crumb hide-sm">· Agent Auditor</span>}
           <span className="spacer" />
+          <button
+            className={`need-chip ${attnLevel}`}
+            onClick={() => setAttnOpen(true)}
+            aria-label={`${attention.length} item${attention.length === 1 ? "" : "s"} need you (shortcut N)`}
+          >
+            <span className="dot" />
+            {attention.length} {attention.length === 1 ? "needs" : "need"} you
+            <kbd className="hide-sm">N</kbd>
+          </button>
           <button className="palette-trigger" onClick={() => setPalette(true)} aria-label="Open command menu">
             <Icon name="search" />
             <span className="label">Jump to order, exception…</span>
@@ -394,7 +485,7 @@ export default function Dashboard({ rules, gatewayWallet }: { rules: Rules; gate
           )}
 
           {section === "overview" && (
-            <Overview data={data} rules={rules} gatewayWallet={gatewayWallet} now={now} loading={loading} fresh={fresh} onOpenOrder={setDrawer} onApprove={approveOrder} onException={exceptionAction} onNavigate={navigate} onScene={onScene} />
+            <Overview data={data} rules={rules} gatewayWallet={gatewayWallet} now={now} loading={loading} live={liveState} fresh={fresh} onOpenOrder={setDrawer} onNavigate={navigate} onScene={onScene} />
           )}
           {section === "orders" && <Orders data={data} now={now} loading={loading} fresh={fresh} filter={filter} onFilter={setFilter} onOpen={setDrawer} onApprove={approveOrder} />}
           {section === "exceptions" && <Exceptions data={data} now={now} loading={loading} fresh={fresh} onOpenOrder={setDrawer} onAction={exceptionAction} />}
@@ -402,6 +493,23 @@ export default function Dashboard({ rules, gatewayWallet }: { rules: Rules; gate
           {section === "controls" && <Controls data={data} rules={rules} gatewayWallet={gatewayWallet} balance={balance} now={now} />}
         </main>
       </div>
+
+      {attnOpen && (
+        <AttentionDrawer
+          items={attention}
+          now={now}
+          inFlight={inFlight}
+          errors={actionErrors}
+          suspended={confirm !== null || palette}
+          onClose={closeAttention}
+          onApprove={approveOrder}
+          onException={exceptionAction}
+          onOpenOrder={(order) => {
+            setAttnOpen(false);
+            setDrawer(order);
+          }}
+        />
+      )}
 
       {drawer && (
         <OrderDrawer

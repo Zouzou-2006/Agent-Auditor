@@ -3,6 +3,8 @@
 import { useMemo, useState } from "react";
 import type { ExceptionRow, ExceptionStatus, OrderRow } from "@/lib/db-types";
 import { SEVERITIES, shortId, type DashboardData } from "@/lib/dashboard/model";
+import { exceptionText } from "@/lib/dashboard/overview";
+import { EXCEPTION_STATUS_LABEL, EXCEPTION_TITLE } from "@/lib/dashboard/words";
 import { Empty, ExceptionStatusBadge, fullTime, SeverityBadge, SkeletonRows, timeAgo, TxLink } from "./ui";
 
 interface Props {
@@ -13,15 +15,6 @@ interface Props {
   onOpenOrder: (order: OrderRow) => void;
   onAction: (exc: ExceptionRow, action: "approve" | "block_seller") => void;
 }
-
-const TYPE_HELP: Record<string, string> = {
-  no_order: "A payment left the wallet with no matching order: the key may be stolen.",
-  wallet_mismatch: "The payment went to a wallet other than the quoted one.",
-  amount_mismatch: "The payment amount differs from the quote.",
-  nothing_delivered: "Paid, but the seller returned nothing.",
-  bad_format: "The delivery is missing fields or has the wrong types.",
-  wrong_data: "The delivery doesn't match what was ordered.",
-};
 
 export default function Exceptions({ data, now, loading, fresh, onOpenOrder, onAction }: Props) {
   const [status, setStatus] = useState<ExceptionStatus | "all">("open");
@@ -45,7 +38,7 @@ export default function Exceptions({ data, now, loading, fresh, onOpenOrder, onA
         <div className="seg" role="group" aria-label="Filter by status">
           {(["open", "approved", "seller_blocked", "all"] as const).map((s) => (
             <button key={s} aria-pressed={status === s} onClick={() => setStatus(s)}>
-              {s} ({count(s)})
+              {s === "all" ? "All" : EXCEPTION_STATUS_LABEL[s]} ({count(s)})
             </button>
           ))}
         </div>
@@ -73,11 +66,8 @@ export default function Exceptions({ data, now, loading, fresh, onOpenOrder, onA
                 return (
                   <tr key={e.exception_id} className={fresh.has(e.exception_id) ? "fresh" : undefined}>
                     <td><SeverityBadge severity={e.severity} /></td>
-                    <td className="mono">{e.type}</td>
-                    <td style={{ maxWidth: 320 }}>
-                      {e.summary ?? TYPE_HELP[e.type]}
-                      {e.summary && <div className="cell-sub">{TYPE_HELP[e.type]}</div>}
-                    </td>
+                    <td style={{ whiteSpace: "nowrap" }}>{EXCEPTION_TITLE[e.type]}</td>
+                    <td style={{ maxWidth: 360 }}>{exceptionText(e, data)}</td>
                     <td>
                       {order ? (
                         <button className="mono" style={{ background: "none", border: 0, padding: 0, color: "var(--accent)", cursor: "pointer" }} onClick={() => onOpenOrder(order)}>

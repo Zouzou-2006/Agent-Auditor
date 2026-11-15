@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ExceptionRow, OrderRow } from "@/lib/db-types";
 import { formatUsd, orderTrail, STEP_PROVENANCE, type DashboardData } from "@/lib/dashboard/model";
+import { exceptionText, orderText } from "@/lib/dashboard/overview";
+import { EXCEPTION_TITLE, itemPhrase, sellerName } from "@/lib/dashboard/words";
 import { AddrLink, ExceptionStatusBadge, fullTime, Icon, SellerStatusBadge, SeverityBadge, StatusBadge, TxLink } from "./ui";
 
 interface Props {
@@ -24,6 +26,9 @@ export default function OrderDrawer({ order, data, onClose, onApprove, onExcepti
   const t = useMemo(() => orderTrail(live, data), [live, data]);
   const closeRef = useRef<HTMLButtonElement>(null);
   const [copied, setCopied] = useState(false);
+  const seller = sellerName(live.seller_id, data.sellers);
+  const item = itemPhrase(live).replace(/^an? /, "");
+  const aiSummary = live.summary ?? t.exception?.summary ?? null;
 
   useEffect(() => {
     closeRef.current?.focus();
@@ -53,7 +58,7 @@ export default function OrderDrawer({ order, data, onClose, onApprove, onExcepti
               {live.deny_reason && <span className="reason">{live.deny_reason}</span>}
             </div>
             <h2 id="drawer-title" style={{ margin: 0, fontSize: 15 }}>
-              {live.item} from {t.seller?.name ?? live.seller_id}
+              {item.charAt(0).toUpperCase() + item.slice(1)} from {seller}
             </h2>
             <button className="mono muted" onClick={copy} style={{ background: "none", border: 0, padding: 0, cursor: "pointer", textAlign: "left" }} title="Copy order_id">
               {live.order_id} {copied ? "· copied" : ""}
@@ -81,28 +86,35 @@ export default function OrderDrawer({ order, data, onClose, onApprove, onExcepti
           <div>
             <h3>
               Why
-              <span className="ai-tag" title="Written by Claude from the saved facts. It explains the decision; it never makes it."><Icon name="spark" />AI-written</span>
+              {aiSummary && (
+                <span className="ai-tag" title="Written by Claude from the saved facts. It explains the decision; it never makes it."><Icon name="spark" />AI-written</span>
+              )}
             </h3>
-            {live.summary || t.exception?.summary ? (
-              <div className="summary">{live.summary ?? t.exception?.summary}</div>
-            ) : live.status === "paying" ? (
-              <div className="cell-sub">A summary is written once the payment settles.</div>
+            {aiSummary ? (
+              <div className="summary">{aiSummary}</div>
             ) : (
-              <button
-                className="btn btn-sm"
-                disabled={summarizing}
-                onClick={async () => {
-                  setSummarizing(true);
-                  try {
-                    await onSummarize(live);
-                  } finally {
-                    setSummarizing(false);
-                  }
-                }}
-              >
-                {summarizing ? <Icon name="refresh" className="spin" /> : <Icon name="spark" />}
-                {summarizing ? "Writing summary…" : "Generate one-line summary"}
-              </button>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10, alignItems: "flex-start" }}>
+                <div className="summary plain">{t.exception ? exceptionText(t.exception, data) : orderText(live, data)}</div>
+                {live.status === "paying" ? (
+                  <div className="cell-sub">An AI summary is written once the payment settles.</div>
+                ) : (
+                  <button
+                    className="btn btn-sm"
+                    disabled={summarizing}
+                    onClick={async () => {
+                      setSummarizing(true);
+                      try {
+                        await onSummarize(live);
+                      } finally {
+                        setSummarizing(false);
+                      }
+                    }}
+                  >
+                    {summarizing ? <Icon name="refresh" className="spin" /> : <Icon name="spark" />}
+                    {summarizing ? "Writing summary…" : "Generate one-line summary"}
+                  </button>
+                )}
+              </div>
             )}
           </div>
 
@@ -138,8 +150,8 @@ export default function OrderDrawer({ order, data, onClose, onApprove, onExcepti
             <dl className="kv">
               <dt>Seller</dt>
               <dd style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                {live.seller_id}
-                {t.seller ? <SellerStatusBadge status={t.seller.status} /> : <span className="reason">not in sellers</span>}
+                {seller}
+                {t.seller && <SellerStatusBadge status={t.seller.status} />}
               </dd>
               <dt>Params</dt>
               <dd className="mono">{JSON.stringify(live.params)}</dd>
@@ -211,7 +223,7 @@ export default function OrderDrawer({ order, data, onClose, onApprove, onExcepti
             <div>
               <h3>Exception</h3>
               <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                <span className="mono">{t.exception.type}</span>
+                <span>{EXCEPTION_TITLE[t.exception.type]}</span>
                 <SeverityBadge severity={t.exception.severity} />
                 <ExceptionStatusBadge status={t.exception.status} />
                 {t.exception.status === "open" && t.exception.type !== "no_order" && (

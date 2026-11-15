@@ -4,6 +4,7 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import type { ExceptionSeverity, ExceptionStatus, OrderStatus, SellerStatus } from "@/lib/db-types";
 import { explorerAddressUrl, explorerTxUrl, shortId } from "@/lib/dashboard/model";
+import { EXCEPTION_STATUS_LABEL, friendlyStatus, timeShort } from "@/lib/dashboard/words";
 
 const paths: Record<string, ReactNode> = {
   overview: <path d="M3 13h4v8H3zM10 9h4v12h-4zM17 4h4v17h-4z" />,
@@ -33,6 +34,7 @@ const paths: Record<string, ReactNode> = {
   wallet: <path d="M4 7h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a1 1 0 0 1-1-1zM4 7l11-3v3M16 13h1" />,
   layers: <path d="M12 3 3 8l9 5 9-5-9-5zM3 13l9 5 9-5M3 17.5l9 5 9-5" />,
   pause: <path d="M9 6v12M15 6v12" />,
+  hourglass: <path d="M7 3h10M7 21h10M8 3v3l4 6-4 6v3M16 3v3l-4 6 4 6v3" />,
 };
 
 export function Icon({ name, className }: { name: keyof typeof paths | string; className?: string }) {
@@ -43,26 +45,26 @@ export function Icon({ name, className }: { name: keyof typeof paths | string; c
   );
 }
 
-// Red (critical) is reserved for critical severity only. A denied order is the control working
-// ("blocked before payment"), so it is neutral, not an alarm.
+// Color discipline: red only for critical, amber only for "waiting for a human", green only for
+// completed or verified, everything else neutral gray. The accent color is for interactive things.
 const ORDER_TONE: Record<OrderStatus, string> = {
   booked: "good",
-  paid: "info",
-  paying: "warning",
-  pending_review: "review",
+  paid: "neutral",
+  paying: "neutral",
+  pending_review: "warning",
   denied: "neutral",
-  exception: "serious",
+  exception: "warning",
 };
-const SEVERITY_TONE: Record<ExceptionSeverity, string> = { critical: "critical", high: "serious", medium: "warning" };
-const EXC_STATUS_TONE: Record<ExceptionStatus, string> = { open: "warning", approved: "good", seller_blocked: "serious" };
+const SEVERITY_TONE: Record<ExceptionSeverity, string> = { critical: "critical", high: "warning", medium: "warning" };
+const EXC_STATUS_TONE: Record<ExceptionStatus, string> = { open: "warning", approved: "good", seller_blocked: "neutral" };
 
 export const ORDER_TONE_VAR: Record<OrderStatus, string> = {
   booked: "var(--good)",
-  paid: "var(--info)",
-  paying: "var(--warning)",
-  pending_review: "var(--review)",
+  paid: "var(--muted)",
+  paying: "var(--muted)",
+  pending_review: "var(--warning)",
   denied: "var(--muted)",
-  exception: "var(--serious)",
+  exception: "var(--warning)",
 };
 
 function Badge({ tone, children }: { tone: string; children: ReactNode }) {
@@ -74,11 +76,14 @@ function Badge({ tone, children }: { tone: string; children: ReactNode }) {
   );
 }
 
+/** Raw status code: used only in the order drawer, where the exact state matters. */
 export const StatusBadge = ({ status }: { status: OrderStatus }) => <Badge tone={ORDER_TONE[status]}>{status}</Badge>;
+/** Plain-language status ("Completed", "Waiting for approval", …): the label everywhere else. */
+export const FriendlyStatusBadge = ({ status }: { status: OrderStatus }) => <Badge tone={ORDER_TONE[status]}>{friendlyStatus(status)}</Badge>;
 export const SeverityBadge = ({ severity }: { severity: ExceptionSeverity }) => <Badge tone={SEVERITY_TONE[severity]}>{severity}</Badge>;
-export const ExceptionStatusBadge = ({ status }: { status: ExceptionStatus }) => <Badge tone={EXC_STATUS_TONE[status]}>{status}</Badge>;
+export const ExceptionStatusBadge = ({ status }: { status: ExceptionStatus }) => <Badge tone={EXC_STATUS_TONE[status]}>{EXCEPTION_STATUS_LABEL[status]}</Badge>;
 export const SellerStatusBadge = ({ status }: { status: SellerStatus }) => (
-  <Badge tone={status === "approved" ? "good" : "serious"}>{status}</Badge>
+  <Badge tone={status === "approved" ? "good" : "neutral"}>{status}</Badge>
 );
 
 export function TxLink({ sig }: { sig: string | null }) {
@@ -99,13 +104,9 @@ export function AddrLink({ addr, label }: { addr: string | null; label?: string 
   );
 }
 
+/** "just now", "5m ago", "2h ago" (see timeShort in lib/dashboard/words.ts). */
 export function timeAgo(iso: string | null, now: number): string {
-  if (!iso) return "—";
-  const s = Math.max(0, Math.round((now - new Date(iso).getTime()) / 1000));
-  if (s < 60) return `${s}s ago`;
-  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
-  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
-  return `${Math.floor(s / 86400)}d ago`;
+  return iso ? timeShort(iso, now) : "—";
 }
 
 /** Full timestamp in America/New_York, the dashboard's display time zone. */

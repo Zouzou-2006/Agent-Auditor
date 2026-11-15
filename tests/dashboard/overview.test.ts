@@ -3,12 +3,10 @@ import type { ExceptionRow, OrderRow, PaymentRow } from "../../lib/db-types";
 import { EMPTY_DATA, type DashboardData, type Rules } from "../../lib/dashboard/model";
 import {
   attentionItems,
+  attentionLevel,
   etClock,
-  exceptionSentence,
-  itemPhrase,
+  lastDecisionAt,
   nextUtcMidnight,
-  orderSentence,
-  pendingSentence,
   recentActivity,
   weekStartEt,
   weekStats,
@@ -75,57 +73,43 @@ describe("time helpers (America/New_York)", () => {
   });
 });
 
-describe("sentences", () => {
-  const d = data({});
-  it("quotes the deny reason exactly", () => {
-    const o = order({ order_id: "o1", status: "denied", created_at: "2026-11-15T10:00:00Z", seller_id: "premiumreports", deny_reason: "seller not approved" });
-    expect(orderSentence(o, d)).toBe("Blocked a price quote from premiumreports: seller not approved. No money moved.");
+describe("attentionItems / attentionLevel", () => {
+  const d = data({
+    orders: [
+      order({ order_id: "p1", status: "pending_review", created_at: "2026-11-15T09:00:00Z", max_amount: 600000 }),
+      order({ order_id: "x1", status: "exception", created_at: "2026-11-15T08:00:00Z", seller_id: "cheapdata" }),
+    ],
+    payments: [payment({ tx_signature: "tz", block_time: "2026-11-15T10:00:00Z", amount: 250000 })],
+    exceptions: [
+      exception({ exception_id: "e-high", type: "nothing_delivered", severity: "high", created_at: "2026-11-15T11:00:00Z", order_id: "x1", summary: "CheapData sent nothing." }),
+      exception({ exception_id: "e-crit", type: "no_order", severity: "critical", created_at: "2026-11-15T10:00:00Z", tx_signature: "tz" }),
+      exception({ exception_id: "e-done", type: "wrong_data", severity: "medium", created_at: "2026-11-15T12:00:00Z", status: "approved" }),
+    ],
   });
 
-  it("uses the seller's display name and the quote amount", () => {
-    const o = order({ order_id: "o1", status: "booked", created_at: "2026-11-15T10:00:00Z", quote_amount: 100000 });
-    expect(orderSentence(o, d)).toBe("Bought a price quote from DataCo for $0.10. Delivered as ordered and booked.");
+  it("lists pending reviews first, then open exceptions by severity", () => {
+    const items = attentionItems(d, rules);
+    expect(items.map((i) => i.key)).toEqual(["p1", "e-crit", "e-high"]);
+    expect(items[0].text).toBe("Your agent wants to buy a SOL price from DataCo for $0.60. Over your $0.50 review limit.");
+    expect(items[1].text).toBe("$0.25 sent to an unknown wallet with no order behind it. Possible stolen key.");
+    expect(items[2].text).toBe("CheapData sent nothing.");
+    expect(attentionLevel(items)).toBe("critical");
   });
 
-  it("writes the pending review sentence with the review limit", () => {
-    const o = order({ order_id: "o1", status: "pending_review", created_at: "2026-11-15T10:00:00Z", max_amount: 600000 });
-    expect(pendingSentence(o, d, rules)).toBe("Your agent wants to buy a price quote from DataCo for $0.60. Over your $0.50 review limit.");
-  });
-
-  it("explains a no_order exception from its payment", () => {
-    const d2 = data({ payments: [payment({ tx_signature: "tx1", block_time: "2026-11-15T10:00:00Z", amount: 250000 })] });
-    const e = exception({ exception_id: "e1", type: "no_order", severity: "critical", created_at: "2026-11-15T10:00:05Z", tx_signature: "tx1" });
-    expect(exceptionSentence(e, d2)).toBe("$0.25 left the agent wallet with no matching order. Possible stolen key.");
-  });
-
-  it("adds a/an to the item", () => {
-    expect(itemPhrase("price_quote")).toBe("a price quote");
-    expect(itemPhrase("api_report")).toBe("an api report");
+  it("is amber without a critical, neutral when empty", () => {
+    expect(attentionLevel(attentionItems({ ...d, exceptions: [] }, rules))).toBe("waiting");
+    expect(attentionLevel(attentionItems(data({}), rules))).toBe("none");
   });
 });
 
-describe("attentionItems", () => {
-  it("lists open exceptions (critical first) then pending orders, and prefers the AI summary", () => {
+describe("lastDecisionAt", () => {
+  it("takes the newest row of any kind", () => {
     const d = data({
-      orders: [
-        order({ order_id: "p1", status: "pending_review", created_at: "2026-11-15T09:00:00Z", max_amount: 600000, summary: "Large quote" }),
-        order({ order_id: "x1", status: "exception", created_at: "2026-11-15T08:00:00Z" }),
-      ],
-      exceptions: [
-        exception({ exception_id: "e-high", type: "nothing_delivered", severity: "high", created_at: "2026-11-15T11:00:00Z", order_id: "x1", summary: "CheapData sent nothing." }),
-        exception({ exception_id: "e-crit", type: "no_order", severity: "critical", created_at: "2026-11-15T10:00:00Z" }),
-        exception({ exception_id: "e-done", type: "wrong_data", severity: "medium", created_at: "2026-11-15T12:00:00Z", status: "approved" }),
-      ],
+      orders: [order({ order_id: "a", status: "booked", created_at: "2026-11-15T09:00:00Z" })],
+      payments: [payment({ tx_signature: "t", block_time: "2026-11-15T09:00:05Z" })],
     });
-    const items = attentionItems(d, rules);
-    expect(items.map((i) => i.key)).toEqual(["e-crit", "e-high", "p1"]);
-    expect(items[1].text).toBe("CheapData sent nothing.");
-    const pending = items[2];
-    expect(pending.kind === "pending" && pending.note).toBe("Large quote");
-  });
-
-  it("is empty when nothing needs a human", () => {
-    expect(attentionItems(data({ orders: [order({ order_id: "b", status: "booked", created_at: "2026-11-15T09:00:00Z" })] }), rules)).toEqual([]);
+    expect(lastDecisionAt(d)).toBe("2026-11-15T09:00:05Z");
+    expect(lastDecisionAt(data({}))).toBeNull();
   });
 });
 
@@ -151,9 +135,9 @@ describe("weekStats", () => {
 });
 
 describe("recentActivity", () => {
-  it("mixes orders and exceptions newest first, capped, with tx links and summaries", () => {
+  it("mixes orders and exceptions newest first, capped, with amounts, tx links and summaries", () => {
     const orders = Array.from({ length: 9 }, (_, i) =>
-      order({ order_id: `o${i}`, status: "booked", created_at: `2026-11-15T0${i}:00:00Z`, summary: i === 8 ? "AI line" : null }),
+      order({ order_id: `o${i}`, status: "booked", created_at: `2026-11-15T0${i}:00:00Z`, quote_amount: 100000, summary: i === 8 ? "AI line" : null }),
     );
     const d = data({
       orders,
@@ -162,8 +146,8 @@ describe("recentActivity", () => {
     });
     const rows = recentActivity(d, 8);
     expect(rows).toHaveLength(8);
-    expect(rows[0]).toMatchObject({ rowKey: "e1", kind: "exception", critical: true, order: null, tx: "txz" });
-    expect(rows[1]).toMatchObject({ rowKey: "o8", kind: "paid", text: "AI line", tx: "tx8" });
-    expect(rows[2].text).toBe("Bought a price quote from DataCo for $0.10. Delivered as ordered and booked.");
+    expect(rows[0]).toMatchObject({ rowKey: "e1", kind: "exception", critical: true, order: null, tx: "txz", amount: null });
+    expect(rows[1]).toMatchObject({ rowKey: "o8", kind: "completed", text: "AI line", tx: "tx8", amount: 100000 });
+    expect(rows[2].text).toBe("Bought a SOL price from DataCo");
   });
 });
