@@ -316,6 +316,20 @@ POST /api/summaries
 - Claude gets only facts built from the saved rows (the audit trail). It explains a decision; it never makes one.
 - `400` for a bad `order_id`, `503` without `ANTHROPIC_API_KEY`, `500 { "error": "internal error" }`.
 
+**Who may call what (`proxy.ts` + `lib/auth.ts`, Nizar):**
+
+| Endpoint | Allowed callers |
+|---|---|
+| `POST /api/orders` | team session, or the buyer agent with `Authorization: Bearer <AGENT_API_KEY>` |
+| `POST /api/orders/[id]/approve`, `POST /api/exceptions/[id]`, `POST /api/assistant`, `POST /api/summaries` | team session only (the agent key gets `403`: an agent never approves its own order) |
+| `/api/sellers/*`, `POST /api/webhooks/streams`, `/api/auth/*` | public (x402 payment / QuickNode HMAC / sign-in) |
+| any other `/api/*` route | team session only (default deny) |
+
+- A team session comes from `POST /api/auth/login { "password": "<DASHBOARD_PASSWORD>" }` (or the `/login` page): `204` and an HttpOnly, SameSite=Strict cookie for 12 hours. `401` wrong password, `429` too many tries. `POST /api/auth/logout` clears it. `GET /api/auth/session` -> `{ "signedIn": bool, "configured": bool }`.
+- Errors are `{ "error": "..." }`: `401` missing or invalid credentials, `403` not allowed for this caller (or a cross-site request), `503` auth not configured. Every check fails closed.
+- New secrets (never `NEXT_PUBLIC_`): `DASHBOARD_PASSWORD` (12+ chars), `AUTH_SESSION_SECRET` and `AGENT_API_KEY` (32+ chars each).
+- Viewing the dashboard stays open: it reads Supabase with the read-only anon key.
+
 ## 11. Who owns what
 
 - **Nizar:** repo setup, the Supabase tables, the gateway and x402 payments (including `/approve`), the Streams webhook and matcher. Runs the memo test first. Submits.

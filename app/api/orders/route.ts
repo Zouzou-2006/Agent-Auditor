@@ -1,6 +1,7 @@
 // POST /api/orders: the gateway (owner: Nizar). SPEC.md section 10.
 // 200 for every order outcome (denied is a normal answer), 400 for an invalid body,
 // 502 if a payment was signed but its outcome is unknown, 500 for anything unexpected.
+import { assertAuthorized } from "@/lib/auth-http";
 import { gatewayDeps } from "@/lib/gateway/deps";
 import { placeOrder } from "@/lib/gateway/purchase";
 import { parseOrderRequest } from "@/lib/gateway/validate";
@@ -13,6 +14,9 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 export async function POST(req: Request): Promise<Response> {
+  const denied = assertAuthorized(req); // also enforced by proxy.ts; checked here too (defense in depth)
+  if (denied) return denied;
+
   let body: unknown;
   try {
     body = await req.json();
