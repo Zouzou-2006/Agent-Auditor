@@ -5,15 +5,7 @@
 // A bad request (unknown ticker, bad date) gets a 400 BEFORE any quote, so nobody is ever
 // charged for data DataCo can't deliver.
 
-import {
-  ORDER_ID_HEADER,
-  PAYMENT_RESPONSE_HEADER,
-  PAYMENT_SIGNATURE_HEADER,
-  buildRequirements,
-  encodeHeader,
-  paymentRequiredResponse,
-  verifyAndSettle,
-} from "./x402";
+import { sellPaid } from "./paid";
 
 export const DATACO_PRICE = 100000; // $0.10 in USDC base units
 
@@ -31,9 +23,6 @@ export interface PriceQuote {
   price_usd: number;
   source: "DataCo";
 }
-
-// orders.order_id is a uuid.
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 type Parsed = { ok: true; ticker: string; date: string } | { ok: false; error: string };
 
@@ -57,43 +46,11 @@ export function priceQuote(ticker: string, date: string): PriceQuote {
   return { ticker, date, price_usd: PRICES_USD[ticker], source: "DataCo" };
 }
 
-export async function handleDataCo(req: Request): Promise<Response> {
-  const wallet = process.env.DATACO_WALLET;
-  if (!wallet) {
-    return Response.json({ error: "DATACO_WALLET is not set (see .env.example)" }, { status: 500 });
-  }
-
-  const url = new URL(req.url);
-  const parsed = parseParams(url.searchParams);
-  if (!parsed.ok) return Response.json({ error: parsed.error }, { status: 400 });
-
-  // The memo must be the gateway's order_id, the same value on the 402 and on the paid retry.
-  const orderId = req.headers.get(ORDER_ID_HEADER);
-  if (!orderId || !UUID.test(orderId)) {
-    return Response.json({ error: `${ORDER_ID_HEADER} header with the order_id is required` }, { status: 400 });
-  }
-
-  const requirements = await buildRequirements(DATACO_PRICE, wallet, orderId);
-  const resource = {
-    url: url.toString(),
-    description: `DataCo ${parsed.ticker} price quote for ${parsed.date}`,
-    mimeType: "application/json",
-  };
-
-  const payment = req.headers.get(PAYMENT_SIGNATURE_HEADER);
-  if (!payment) return paymentRequiredResponse(requirements, resource);
-
-  const settled = await verifyAndSettle(payment, requirements);
-  if (!settled.ok) return paymentRequiredResponse(requirements, resource, settled.reason);
-
-  return Response.json(priceQuote(parsed.ticker, parsed.date), {
-    headers: {
-      [PAYMENT_RESPONSE_HEADER]: encodeHeader({
-        success: true,
-        transaction: settled.transaction,
-        network: settled.network,
-        payer: settled.payer,
-      }),
-    },
+export function handleDataCo(req: Request): Promise<Response> {
+  return sellPaid(req, {
+    name: "DataCo",
+    walletEnv: "DATACO_WALLET",
+    price: DATACO_PRICE,
+    deliver: (ticker, date) => ({ body: JSON.stringify(priceQuote(ticker, date)), contentType: "application/json" }),
   });
 }
