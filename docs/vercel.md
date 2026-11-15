@@ -24,6 +24,7 @@ Paste the values from your own `.env.local` in the Vercel dashboard. Never in ch
 | `SOLANA_RPC_URL` | devnet RPC |
 | `X402_FACILITATOR_URL` | `https://facilitator.payai.network` |
 | `DATACO_WALLET` | DataCo's owner wallet (must match `sellers.wallet`) |
+| `CHEAPDATA_WALLET` | CheapData's owner wallet (must match `sellers.wallet`) |
 | `NEXT_PUBLIC_SUPABASE_URL` | baked in at build time |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | baked in at build time |
 | `SUPABASE_SERVICE_ROLE_KEY` | server only (secret) |
