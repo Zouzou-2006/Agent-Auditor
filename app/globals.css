@@ -249,6 +249,63 @@ td.right, th.right { text-align: right; }
 .seg button + button { border-left: 1px solid var(--border); }
 .seg button:hover { color: var(--text); }
 .seg button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
+.seg-count { display: inline-block; min-width: 18px; margin-left: 4px; padding: 0 5px; border-radius: 99px; background: rgba(255, 255, 255, 0.07); color: var(--text-2); font-variant-numeric: tabular-nums; line-height: 17px; }
+.seg button[aria-pressed="true"] .seg-count { background: rgba(34, 211, 238, 0.18); color: var(--accent); }
+
+/* ---------- orders table: one line per order, every row the same height ---------- */
+.orders-table td { white-space: nowrap; height: 52px; padding-top: 0; padding-bottom: 0; }
+.orders-table .why-cell { max-width: 280px; overflow: hidden; text-overflow: ellipsis; }
+.orders-table td:last-child, .orders-table th:last-child { width: 1%; padding-right: 18px; }
+.toolbar .search .input { width: 220px; }
+.toolbar .select { width: 160px; }
+.amount-cell { font-weight: 550; }
+.chain-ok { display: inline-grid; place-items: center; width: 16px; height: 16px; margin-right: 6px; border-radius: 50%; font-size: 10px; font-weight: 800; color: var(--good); background: var(--good-soft); border: 1px solid var(--good-line); vertical-align: 1px; text-decoration: none; }
+.chain-ok:hover { text-decoration: none; background: rgba(52, 211, 153, 0.25); }
+.struck { text-decoration: line-through; text-decoration-thickness: 1px; color: var(--muted); font-weight: 400; }
+
+/* ---------- exception cards ---------- */
+.exc-list { list-style: none; margin: 0; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.exc-card { display: grid; grid-template-columns: 96px minmax(0, 1fr) auto auto; align-items: center; gap: 16px; padding: 16px 18px; border: 1px solid var(--border); border-radius: 12px; background: rgba(255, 255, 255, 0.02); transition: border-color 0.15s, background 0.15s; }
+.exc-card.clickable { cursor: pointer; }
+.exc-card.clickable:hover { border-color: var(--border-strong); background: var(--hover); }
+.exc-card.sev-critical { border-color: var(--critical-line); box-shadow: inset 3px 0 0 var(--critical); background: rgba(255, 118, 118, 0.05); }
+.exc-card .stamp { justify-self: start; }
+.exc-main { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.exc-title { display: flex; align-items: center; gap: 10px; font-size: var(--fs-head); font-weight: 600; }
+.exc-text { color: var(--text-2); }
+.exc-figures { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; min-width: 70px; }
+.exc-amount { font-size: var(--fs-head); font-weight: 600; }
+.exc-when { font-size: var(--fs-small); color: var(--muted); }
+.exc-actions { display: flex; gap: 6px; justify-content: flex-end; min-width: 190px; }
+@media (max-width: 760px) { .exc-card { grid-template-columns: minmax(0, 1fr) auto; } .exc-main { grid-column: 1 / -1; order: 2; } .exc-figures { order: 1; } .exc-actions { grid-column: 1 / -1; order: 3; justify-content: flex-start; min-width: 0; } }
+
+/* ---------- ledger ---------- */
+.ledger-totals { gap: 10px; color: var(--text-2); font-size: var(--fs-body); }
+.ledger-totals b { color: var(--text); font-weight: 650; }
+.ledger-totals b.crit-text { color: var(--critical); }
+.journal tbody.je + tbody.je .je-head td { border-top: 1px solid var(--border-strong); }
+.journal td { border-bottom: 0; padding-top: 7px; padding-bottom: 7px; }
+.journal .je-head td { padding-top: 14px; }
+.journal .je-line:last-child td { padding-bottom: 14px; }
+.journal tbody tr:hover td { background: none; }
+.journal tbody.je:hover td { background: rgba(255, 255, 255, 0.03); }
+.je-desc { font-weight: 600; }
+.je-refs { display: inline-flex; gap: 12px; margin-left: 12px; font-size: var(--fs-small); }
+.je-credit td:nth-child(2) { padding-left: 46px; color: var(--text-2); }
+
+/* ---------- controls ---------- */
+/* Rules above sellers, each full width: side by side, both tables were too tight to read. */
+.controls-grid { grid-template-columns: minmax(0, 1fr); }
+.sellers-table td { white-space: nowrap; }
+.sellers-table .seller-cell { white-space: normal; min-width: 200px; }
+/* stat tiles */
+.tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.tile { padding: 18px var(--pad); display: flex; flex-direction: column; gap: 4px; }
+.tile + .tile { border-left: 1px solid var(--border); }
+.tile-label { color: var(--text-2); font-weight: 550; }
+.tile-value { font-size: var(--fs-title); font-weight: 650; letter-spacing: -0.4px; }
+.tile-foot { font-size: var(--fs-small); color: var(--muted); }
+@media (max-width: 900px) { .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } .tile:nth-child(3) { border-left: 0; } .tile:nth-child(n + 3) { border-top: 1px solid var(--border); } }
 
 /* ---------- feed ---------- */
 .feed { list-style: none; margin: 0; padding: 4px 0; }
@@ -325,6 +382,8 @@ td.right, th.right { text-align: right; }
 .stamp-blocked { color: var(--blocked); background: var(--blocked-soft); border-color: var(--blocked-line); }
 .stamp-flagged { color: var(--critical); background: var(--critical-soft); }
 .stamp-approval, .stamp-unconfirmed { color: var(--warning); background: var(--warning-soft); }
+.stamp-sev-critical { color: var(--critical); background: var(--critical-soft); }
+.stamp-sev-high, .stamp-sev-medium { color: var(--warning); background: var(--warning-soft); }
 .stamp-in { animation: stampin 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.2); }
 @keyframes stampin { from { transform: rotate(-4deg) scale(1.5); opacity: 0; } 70% { transform: rotate(-4deg) scale(0.94); opacity: 1; } to { transform: rotate(-4deg) scale(1); } }
 
@@ -415,6 +474,10 @@ td.right, th.right { text-align: right; }
 .code { background: rgba(0, 0, 0, 0.35); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 11px 13px; font-family: var(--mono); font-size: var(--fs-small); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 220px; overflow-y: auto; color: var(--text-2); }
 .summary { border: 1px solid rgba(34, 211, 238, 0.22); background: linear-gradient(90deg, rgba(34, 211, 238, 0.07), transparent); border-radius: var(--radius-sm); padding: 11px 13px; color: var(--text); }
 .summary.plain { border-color: var(--border); background: var(--raised); color: var(--text-2); }
+/* The drawer's "Why": a quote, not a box. Cyan rule when Claude wrote it, grey when it's the plain sentence. */
+.why { margin: 0; padding: 2px 0 2px 14px; border-left: 3px solid var(--border-strong); font-size: var(--fs-head); line-height: 1.5; color: var(--text); }
+.why.ai { border-left-color: var(--accent); }
+.drawer-text { margin: 0; color: var(--text); }
 
 .dialog { position: fixed; z-index: 51; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(460px, calc(100vw - 32px)); background: var(--surface); border: 1px solid var(--border-strong); border-radius: 16px; box-shadow: var(--shadow-raised); animation: pop 0.16s ease-out; }
 @keyframes pop { from { opacity: 0; transform: translate(-50%, -47%) scale(0.98); } }

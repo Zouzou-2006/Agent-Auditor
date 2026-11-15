@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { ExceptionRow, OrderRow, PaymentRow } from "../../lib/db-types";
-import { EMPTY_DATA, type DashboardData, type Rules } from "../../lib/dashboard/model";
+import { EMPTY_DATA, matchesStatus, type DashboardData, type Rules } from "../../lib/dashboard/model";
 import {
   attentionItems,
   attentionLevel,
   etClock,
   isUnconfirmed,
   lastDecisionAt,
+  ledgerTotals,
   nextUtcMidnight,
   orderStamp,
   recentActivity,
@@ -157,6 +158,32 @@ describe("weekStats", () => {
       ],
     });
     expect(weekStats(d, GATEWAY, now)).toMatchObject({ spent: 200000, unmatched: 100000, caught: 1, booked: 100000 });
+  });
+});
+
+describe("ledgerTotals", () => {
+  it("splits on-chain money out into booked and not booked, and names the part with no order", () => {
+    const d = data({
+      payments: [
+        payment({ tx_signature: "t1", block_time: "2026-11-14T10:00:10Z", order_id: "a" }),
+        payment({ tx_signature: "t2", block_time: "2026-11-14T12:00:00Z" }),
+        payment({ tx_signature: "t3", block_time: "2026-11-14T12:00:00Z", from_wallet: "Faucet", to_wallet: GATEWAY, amount: 9000000 }),
+      ],
+      journal_entries: [
+        { entry_id: "j1", order_id: "a", tx_signature: "t1", entry_date: "2026-11-14", debit_account: "Data purchases expense", credit_account: "USDC - agent wallet", amount: 100000, description: "d" },
+      ],
+    });
+    expect(ledgerTotals(d, GATEWAY)).toEqual({ out: 200000, booked: 100000, notBooked: 100000, unmatched: 100000 });
+  });
+});
+
+describe("matchesStatus", () => {
+  it("groups paid and paying as processing", () => {
+    const paying = order({ order_id: "p", status: "paying", created_at: "2026-11-15T10:00:00Z" });
+    expect(matchesStatus(paying, "processing")).toBe(true);
+    expect(matchesStatus({ ...paying, status: "paid" }, "processing")).toBe(true);
+    expect(matchesStatus({ ...paying, status: "booked" }, "processing")).toBe(false);
+    expect(matchesStatus(paying, "all")).toBe(true);
   });
 });
 

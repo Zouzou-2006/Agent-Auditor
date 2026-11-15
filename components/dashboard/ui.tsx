@@ -101,6 +101,15 @@ export function Stamp({ kind, animate = false, title }: { kind: StampKind; anima
   );
 }
 
+/** Severity in the stamp style, for exception cards: red critical, amber high and medium. */
+export function SeverityStamp({ severity }: { severity: ExceptionSeverity }) {
+  return (
+    <span className={`stamp stamp-sev-${severity}`} title={severity}>
+      {SEVERITY_LABEL[severity]}
+    </span>
+  );
+}
+
 const LEG_ICON: Record<MatchState, string> = { ok: "✓", failed: "✕", blocked: "✕", none: "·" };
 const LEG_WORD: Record<MatchState, string> = { ok: "checks out", failed: "failed", blocked: "blocked", none: "not reached yet" };
 

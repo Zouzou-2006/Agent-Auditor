@@ -152,14 +152,21 @@ export function dailySpend(payments: PaymentRow[], gatewayWallet: string | null,
 
 export interface OrderFilter {
   query: string;
-  status: OrderStatus | "all";
+  /** "processing" groups paid and paying: both are money on its way, not yet booked. */
+  status: OrderStatus | "all" | "processing";
   seller: string | "all";
+}
+
+export function matchesStatus(order: OrderRow, status: OrderFilter["status"]): boolean {
+  if (status === "all") return true;
+  if (status === "processing") return order.status === "paid" || order.status === "paying";
+  return order.status === status;
 }
 
 export function filterOrders(orders: OrderRow[], filter: OrderFilter): OrderRow[] {
   const q = filter.query.trim().toLowerCase();
   return orders.filter((o) => {
-    if (filter.status !== "all" && o.status !== filter.status) return false;
+    if (!matchesStatus(o, filter.status)) return false;
     if (filter.seller !== "all" && o.seller_id !== filter.seller) return false;
     if (!q) return true;
     return [o.order_id, o.seller_id, o.item, o.purpose, o.deny_reason ?? "", o.summary ?? "", JSON.stringify(o.params)]

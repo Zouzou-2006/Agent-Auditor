@@ -95,10 +95,10 @@ export default function OrderDrawer({ order, data, now, onClose, onApprove, onEx
               )}
             </h3>
             {aiSummary ? (
-              <div className="summary">{aiSummary}</div>
+              <blockquote className="why ai">{aiSummary}</blockquote>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 10, alignItems: "flex-start" }}>
-                <div className="summary plain">{t.exception ? exceptionText(t.exception, data) : orderText(live, data)}</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 12, alignItems: "flex-start" }}>
+                <blockquote className="why">{t.exception ? exceptionText(t.exception, data) : orderText(live, data)}</blockquote>
                 {live.status === "paying" ? (
                   <div className="cell-sub">An AI summary is written once the payment settles.</div>
                 ) : live.summary === null ? (
@@ -135,10 +135,13 @@ export default function OrderDrawer({ order, data, now, onClose, onApprove, onEx
                     <div>
                       <div className="t-row">
                         <span className="t-label">{s.label}</span>
-                        <span className={`prov ${p.basis}`} title={`Decided by: ${p.source} (${p.basis})`}>
-                          <i />
-                          {PROVENANCE_LABEL[p.basis]}
-                        </span>
+                        {/* Rule steps are the default; tag only the ones decided by the blockchain or a person. */}
+                        {p.basis !== "deterministic" && (
+                          <span className={`prov ${p.basis}`} title={`Decided by: ${p.source} (${p.basis})`}>
+                            <i />
+                            {PROVENANCE_LABEL[p.basis]}
+                          </span>
+                        )}
                       </div>
                       <div className="t-detail">{s.detail}</div>
                       <div className="t-source cell-sub">{p.source}</div>
@@ -193,7 +196,7 @@ export default function OrderDrawer({ order, data, now, onClose, onApprove, onEx
           {t.delivery && (
             <div>
               <h3>What the seller delivered ({t.delivery.passed ? "checks passed" : "checks failed"})</h3>
-              <div className="summary plain">{deliveryText(t.delivery.body)}</div>
+              <p className="drawer-text">{deliveryText(t.delivery.body)}</p>
             </div>
           )}
 

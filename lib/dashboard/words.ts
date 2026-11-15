@@ -218,6 +218,11 @@ export const SEVERITY_LABEL: Record<ExceptionSeverity, string> = { critical: "Cr
 
 export const SELLER_STATUS_LABEL: Record<SellerStatus, string> = { approved: "Approved", blocked: "Blocked" };
 
+/** A short note under a seller on the Controls page, for sellers that play a special part in the demo. */
+export const SELLER_NOTE: Record<string, string> = {
+  sketchynews: "Free preview only. Never paid in the demo.",
+};
+
 /** The chip on each audit-trail step: who or what decided it. */
 export const PROVENANCE_LABEL: Record<ProvenanceBasis, string> = { deterministic: "Rule", "on-chain": "Blockchain", human: "Person" };
 

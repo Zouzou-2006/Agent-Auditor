@@ -201,6 +201,26 @@ export function weekStats(data: DashboardData, gatewayWallet: string | null, now
   };
 }
 
+export interface LedgerTotals {
+  /** Every payment out of the wallet, read from the chain. */
+  out: number;
+  /** Everything booked to the ledger (purchases and losses). */
+  booked: number;
+  /** Out minus booked: money that left but isn't in the books (yet). */
+  notBooked: number;
+  /** The part of `out` with no order behind it. */
+  unmatched: number;
+}
+
+/** All-time totals for the Ledger header, using the same outgoing-payment math as the Overview. */
+export function ledgerTotals(data: DashboardData, gatewayWallet: string | null): LedgerTotals {
+  const out = outgoing(data.payments, gatewayWallet);
+  const sum = (rows: { amount: number }[]) => rows.reduce((s, r) => s + r.amount, 0);
+  const total = sum(out);
+  const booked = sum(data.journal_entries);
+  return { out: total, booked, notBooked: Math.max(0, total - booked), unmatched: sum(out.filter((p) => p.order_id === null)) };
+}
+
 /** completed ✓, processing ⏳, blocked ⊘, pending ⏸, exception ⚠ */
 export type ActivityKind = "completed" | "processing" | "blocked" | "pending" | "exception";
 
