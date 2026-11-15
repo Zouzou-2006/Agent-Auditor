@@ -39,7 +39,7 @@ export default function Controls({ data, rules, gatewayWallet, balance, now }: P
         <div className="card-body">
           <dl className="kv">
             <dt>Wallet</dt>
-            <dd>{gatewayWallet ? <AddrLink addr={gatewayWallet} label={gatewayWallet} /> : <span className="muted">GATEWAY_WALLET_ADDRESS not set</span>}</dd>
+            <dd>{gatewayWallet ? <AddrLink addr={gatewayWallet} /> : <span className="muted" title="GATEWAY_WALLET_ADDRESS is not set">Not set</span>}</dd>
             <dt>USDC balance</dt>
             <dd className="num">{balance === null ? "—" : formatUsd(balance)}</dd>
             <dt>Spent today</dt>

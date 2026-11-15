@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ExceptionRow, OrderRow, PaymentRow, SellerRow } from "../../lib/db-types";
 import {
+  deliveryText,
   dollars,
   EXCEPTION_STATUS_LABEL,
   EXCEPTION_TITLE,
@@ -8,10 +9,12 @@ import {
   friendlyStatus,
   itemLabel,
   itemPhrase,
+  longDate,
   networkLabel,
   orderSentence,
   paramsText,
   PROVENANCE_LABEL,
+  readableSummary,
   reviewSentence,
   SELLER_STATUS_LABEL,
   sellerName,
@@ -103,7 +106,7 @@ describe("itemPhrase / orderSentence", () => {
 describe("exceptionSentence", () => {
   it("has one sentence per type", () => {
     expect(exceptionSentence(exc("no_order"), null, payment(100000), null)).toBe(
-      "$0.10 sent to an unknown wallet with no order behind it. Possible stolen key.",
+      "$0.10 left the wallet with no order behind it. Possible stolen key.",
     );
     expect(exceptionSentence(exc("wallet_mismatch"), order(), payment(100000), "DataCo")).toBe("Payment went to a different wallet than the order.");
     expect(exceptionSentence(exc("amount_mismatch"), order({ quote_amount: 100000 }), payment(150000), "DataCo")).toBe(
@@ -163,6 +166,48 @@ describe("itemLabel / shortDate / paramsText", () => {
   });
 });
 
+describe("readableSummary", () => {
+  it("keeps plain business English", () => {
+    expect(readableSummary("Bought a SOL price from DataCo for $0.10; the data arrived as ordered.", sellers)).toBe(
+      "Bought a SOL price from DataCo for $0.10; the data arrived as ordered.",
+    );
+  });
+
+  it("drops text with raw values, so the plain sentence shows instead", () => {
+    const raw = [
+      "Payment of 100000 to 6QUTX4jCxJiBXpX2VjC66tKuodmkhvVf2qtEvbwBEfaN matches no order",
+      "Order 049f85eb paid approved seller DataCo $0.10 for a price quote.",
+      "The agent's $0.10 premium_report order was denied.",
+      "Booking awaits Streams confirmation.",
+      "The agent paid approved seller dataco $0.10 for a price quote.",
+    ];
+    for (const text of raw) expect(readableSummary(text, sellers)).toBeNull();
+    expect(readableSummary(null, sellers)).toBeNull();
+    expect(readableSummary("  ", sellers)).toBeNull();
+  });
+});
+
+describe("deliveryText / longDate", () => {
+  it("reads a price quote delivery as a sentence", () => {
+    expect(deliveryText('{"ticker":"SOL","date":"2026-11-13","price_usd":142.1,"source":"DataCo"}')).toBe(
+      "SOL was $142.10 on Nov 13 (source: DataCo).",
+    );
+  });
+
+  it("says when nothing came or it can't be read", () => {
+    expect(deliveryText("")).toBe("Nothing was delivered.");
+    expect(deliveryText(null)).toBe("Nothing was delivered.");
+    expect(deliveryText("<html>oops")).toBe("The delivery couldn't be read.");
+    expect(deliveryText("[1,2]")).toBe("The delivery couldn't be read.");
+    expect(deliveryText('{"headline":"Markets up"}')).toBe("Headline Markets up");
+  });
+
+  it("writes journal dates in words", () => {
+    expect(longDate("2026-11-13")).toBe("Nov 13, 2026");
+    expect(longDate("not a date")).toBe("not a date");
+  });
+});
+
 describe("label maps", () => {
   const snake = /[a-z]_[a-z]/;
   const all = [
@@ -185,11 +230,11 @@ describe("label maps", () => {
     expect(PROVENANCE_LABEL).toEqual({ deterministic: "Rule", "on-chain": "Blockchain", human: "Person" });
   });
 
-  it("names the copilot's lookups and the devnet network", () => {
+  it("names the copilot's lookups and the test network", () => {
     expect(toolLabel("get_order")).toBe("Order details");
     expect(toolLabel("daily_spend")).toBe("Today's spending");
     expect(toolLabel("brand_new_tool")).toBe("brand new tool");
-    expect(networkLabel("solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1")).toBe("Solana devnet");
+    expect(networkLabel("solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1")).toBe("Solana (test network)");
     expect(networkLabel("solana:other")).toBe("solana:other");
   });
 });

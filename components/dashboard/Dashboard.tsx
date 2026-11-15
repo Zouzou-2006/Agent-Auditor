@@ -10,7 +10,7 @@ import { loadDashboardData } from "@/lib/dashboard/load";
 import { EMPTY_DATA, formatUsd, ORDER_STATUSES, shortId, type DashboardData, type OrderFilter, type Rules } from "@/lib/dashboard/model";
 import { attentionItems, attentionLevel } from "@/lib/dashboard/overview";
 import type { Scene } from "@/lib/dashboard/scenes";
-import { itemLabel, sellerName, statusLabel } from "@/lib/dashboard/words";
+import { itemLabel, networkLabel, sellerName, statusLabel } from "@/lib/dashboard/words";
 import AttentionDrawer from "./AttentionDrawer";
 import CommandPalette, { type PaletteAction } from "./CommandPalette";
 import Controls from "./Controls";
@@ -284,7 +284,7 @@ export default function Dashboard({ rules, gatewayWallet }: { rules: Rules; gate
         body: (
           <>
             <p>{sellerName(order.seller_id, data.sellers)} · {itemLabel(order)} · max {formatUsd(order.max_amount)}</p>
-            <p style={{ marginTop: 8 }}>The gateway re-checks the rules, asks the seller for a quote and pays it in USDC on devnet. This can take up to about 20 seconds.</p>
+            <p style={{ marginTop: 8 }}>The gateway re-checks the rules, asks the seller for a quote and pays it in USDC on Solana. This can take up to about 20 seconds.</p>
           </>
         ),
         run: () =>
@@ -419,7 +419,7 @@ export default function Dashboard({ rules, gatewayWallet }: { rules: Rules; gate
           <div className="brand-mark">AA</div>
           <div>
             <div className="brand-name">Agent Auditor</div>
-            <div className="brand-sub">Controls for AI spend · devnet</div>
+            <div className="brand-sub" title={`${networkLabel(rules.network)}: ${rules.network}`}>Controls for AI spend</div>
           </div>
         </div>
         <div>

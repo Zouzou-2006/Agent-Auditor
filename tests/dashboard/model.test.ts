@@ -203,11 +203,13 @@ describe("orderTrail", () => {
       ...EMPTY_DATA,
       orders: [paid],
       payments: [payment({})],
-      deliveries: [{ order_id: paid.order_id, received_at: NOW.toISOString(), body: "", checks: { received: false, format: false, matches_order: false }, passed: false }],
+      // Keys out of order on purpose: jsonb sorts them, and the trail must still list them in run order.
+      deliveries: [{ order_id: paid.order_id, received_at: NOW.toISOString(), body: "", checks: { matches_order: false, format: false, received: false }, passed: false }],
       exceptions: [{ exception_id: "e1", created_at: NOW.toISOString(), order_id: paid.order_id, tx_signature: "sig1", type: "nothing_delivered", severity: "high", summary: null, status: "seller_blocked" }],
     };
     const trail = orderTrail(paid, data);
     expect(trail.steps.map((s) => s.label)).toEqual(["Spending rules", "Seller's price", "Payment on Solana", "Delivery checks", "Booked to the ledger"]);
+    expect(trail.steps[1].detail).toBe("$0.10, to the seller's wallet on file");
     expect(trail.steps[3].detail).toBe("Received ✗ · Format ✗ · Matches the order ✗");
     expect(trail.steps[4].detail).toBe("Not booked: nothing delivered exception (high), seller blocked");
     for (const s of trail.steps) expect(s.detail).not.toMatch(/[a-z]_[a-z]|UTC|HTTP/);

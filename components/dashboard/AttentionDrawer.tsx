@@ -9,7 +9,7 @@ import type { ExceptionRow, OrderRow } from "@/lib/db-types";
 import { explorerTxUrl } from "@/lib/dashboard/model";
 import type { AttentionItem } from "@/lib/dashboard/overview";
 import { dollars, EXCEPTION_TITLE, friendlyStatus, timeShort } from "@/lib/dashboard/words";
-import { fullTime, Icon, SeverityBadge } from "./ui";
+import { AddrLink, fullTime, Icon, SeverityBadge } from "./ui";
 
 interface Props {
   items: AttentionItem[];
@@ -82,10 +82,15 @@ export default function AttentionDrawer({ items, now, inFlight, errors, suspende
                           {item.kind === "pending" ? friendlyStatus(item.order.status) : EXCEPTION_TITLE[item.exception.type]}
                           {item.amount !== null && <span className="num attn-amount">{dollars(item.amount)}</span>}
                         </div>
-                        <div className="attn-text">{item.text}</div>
+                        <div className="attn-text" title={item.note ?? undefined}>{item.text}</div>
                         <div className="attn-meta">
                           {item.kind === "exception" && <SeverityBadge severity={item.exception.severity} />}
                           <time dateTime={item.at} title={fullTime(item.at)}>{timeShort(item.at, now)}</time>
+                          {item.kind === "exception" && item.exception.type === "no_order" && item.toWallet && (
+                            <span>
+                              sent to <AddrLink addr={item.toWallet} />
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>

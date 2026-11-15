@@ -79,9 +79,10 @@ export default function Overview({ data, rules, gatewayWallet, now, loading, liv
       </section>
 
       <div className="ov-stats">
-        <Stat label="This week" loading={loading} value={dollars(week.spent)} foot={`${week.purchases} purchase${week.purchases === 1 ? "" : "s"} · since Monday ET`} />
+        {/* Every purchase counted here is a payment read from Solana, so "confirmed" lives in this foot
+            instead of a separate card that would repeat the same number. */}
+        <Stat label="This week" loading={loading} value={dollars(week.spent)} foot={`${week.purchases} purchase${week.purchases === 1 ? "" : "s"}, confirmed on Solana · since Monday ET`} />
         <Stat label="Rules blocked" loading={loading} value={String(week.blocked)} foot="This week · no money moved" />
-        <Stat label="Verified on chain" loading={loading} value={String(week.verified)} foot="Solana devnet" />
       </div>
 
       <section className="card" aria-labelledby="activity-h">
@@ -171,7 +172,7 @@ function ActivityLine({ row, now, fresh, onOpenOrder }: { row: ActivityRow; now:
       <span className={`act-ico ${tone}`}>
         <Icon name={ACTIVITY_ICON[row.kind]} />
       </span>
-      <span className="act-text">
+      <span className="act-text" title={row.note ?? undefined}>
         {row.text}
         {link && row.tx && (
           <a className="act-link" href={explorerTxUrl(row.tx)} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>

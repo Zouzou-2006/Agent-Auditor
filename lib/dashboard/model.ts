@@ -227,6 +227,9 @@ function checksOf(delivery: DeliveryRow): Record<string, boolean> {
 // Trail wording lives here with the steps it describes (lib/dashboard/words.ts imports this file,
 // so importing words.ts back would make a cycle). Raw keys are deliveries.checks (SPEC section 4).
 const CHECK_LABEL: Record<string, string> = { received: "Received", format: "Format", matches_order: "Matches the order" };
+/** The order the checks run in (SPEC section 7); jsonb doesn't keep key order. */
+const CHECK_ORDER = Object.keys(CHECK_LABEL);
+const checkRank = (k: string) => (CHECK_ORDER.includes(k) ? CHECK_ORDER.indexOf(k) : CHECK_ORDER.length);
 const plain = (raw: string) => raw.replace(/_/g, " ");
 
 /** "Nov 14, 7:00:05 AM ET": block times in the dashboard's display time zone. */
@@ -263,17 +266,22 @@ export function orderTrail(order: OrderRow, data: DashboardData): OrderTrail {
     steps.push({ key: "review", label: "Human review", state: "waiting", detail: "Over the review threshold, waiting for Approve" });
   }
 
-  const quoteSeen = order.quote_amount !== null ? `${formatUsd(order.quote_amount)} to ${shortId(order.quote_wallet, 6)}` : "";
+  // The quote wallet is checked by rule 5; the address itself is in the drawer's technical details.
+  const quoted = order.quote_amount !== null ? formatUsd(order.quote_amount) : "";
   steps.push({
     key: "quote",
     label: "Seller's price",
     state: stage === "quote" ? "failed" : stage === "rules" ? "skipped" : order.quote_amount !== null ? "done" : "waiting",
     detail:
       stage === "quote"
-        ? `Denied: ${order.deny_reason}${quoteSeen ? ` (${quoteSeen})` : ""}`
+        ? `Denied: ${order.deny_reason}${quoted ? ` (quoted ${quoted})` : ""}`
         : stage === "rules"
           ? "Not requested: blocked before contacting the seller"
-          : quoteSeen || (order.status === "pending_review" ? "Requested after approval" : "Not received yet"),
+          : quoted
+            ? `${quoted}, to the seller's wallet on file`
+            : order.status === "pending_review"
+              ? "Requested after approval"
+              : "Not received yet",
   });
 
   const paymentFailed = stage === "payment";
@@ -301,6 +309,7 @@ export function orderTrail(order: OrderRow, data: DashboardData): OrderTrail {
     state: delivery ? (delivery.passed ? "done" : "failed") : order.status === "denied" ? "skipped" : "waiting",
     detail: checks
       ? Object.entries(checks)
+          .sort(([a], [b]) => checkRank(a) - checkRank(b))
           .map(([k, v]) => `${CHECK_LABEL[k] ?? plain(k)} ${v ? "✓" : "✗"}`)
           .join(" · ")
       : order.status === "denied"

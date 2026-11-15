@@ -2,9 +2,10 @@
 
 import { useMemo } from "react";
 import type { OrderRow, OrderStatus } from "@/lib/db-types";
-import { filterOrders, formatUsd, ORDER_STATUSES, paymentTxByOrder, shortId, type DashboardData, type OrderFilter } from "@/lib/dashboard/model";
+import { filterOrders, formatUsd, ORDER_STATUSES, paymentTxByOrder, type DashboardData, type OrderFilter } from "@/lib/dashboard/model";
+import { orderSummary } from "@/lib/dashboard/overview";
 import { friendlyStatus, itemLabel, sellerName } from "@/lib/dashboard/words";
-import { AddrLink, Empty, fullTime, Icon, SkeletonRows, StatusBadge, timeAgo, TxLink } from "./ui";
+import { Empty, fullTime, Icon, SkeletonRows, StatusBadge, timeAgo, TxLink } from "./ui";
 
 /** Filter labels: plain words, with the two "Processing" steps told apart. */
 const FILTER_LABEL: Record<OrderStatus, string> = {
@@ -85,7 +86,6 @@ export default function Orders({ data, now, loading, fresh, filter, onFilter, on
           <thead>
             <tr>
               <th>Created</th>
-              <th>Order</th>
               <th>Seller</th>
               <th>Item</th>
               <th className="right">Max</th>
@@ -97,10 +97,12 @@ export default function Orders({ data, now, loading, fresh, filter, onFilter, on
             </tr>
           </thead>
           {loading ? (
-            <SkeletonRows rows={5} cols={10} />
+            <SkeletonRows rows={5} cols={9} />
           ) : (
             <tbody>
-              {rows.map((o) => (
+              {rows.map((o) => {
+                const summary = orderSummary(o, data);
+                return (
                 <tr
                   key={o.order_id}
                   className={`clickable${fresh.has(o.order_id) ? " fresh" : ""}`}
@@ -108,20 +110,14 @@ export default function Orders({ data, now, loading, fresh, filter, onFilter, on
                   tabIndex={0}
                   onKeyDown={(e) => e.key === "Enter" && onOpen(o)}
                 >
-                  <td title={fullTime(o.created_at)} className="dim" style={{ whiteSpace: "nowrap" }}>
+                  <td title={`${fullTime(o.created_at)} · order ${o.order_id}`} className="dim" style={{ whiteSpace: "nowrap" }}>
                     {timeAgo(o.created_at, now)}
                   </td>
-                  <td className="mono">{shortId(o.order_id)}</td>
                   <td title={o.seller_id}>{sellerName(o.seller_id, data.sellers)}</td>
                   <td title={`${o.item} ${JSON.stringify(o.params)}`}>{itemLabel(o)}</td>
                   <td className="right num">{formatUsd(o.max_amount)}</td>
-                  <td className="right num">
+                  <td className="right num" title={o.quote_wallet ? `Quote wallet ${o.quote_wallet}` : undefined}>
                     {formatUsd(o.quote_amount)}
-                    {o.quote_wallet && (
-                      <div className="cell-sub">
-                        <AddrLink addr={o.quote_wallet} />
-                      </div>
-                    )}
                   </td>
                   <td>
                     <TxLink sig={paymentTx.get(o.order_id) ?? null} />
@@ -129,11 +125,11 @@ export default function Orders({ data, now, loading, fresh, filter, onFilter, on
                   <td>
                     <StatusBadge status={o.status} />
                   </td>
-                  <td style={{ maxWidth: 260 }}>
+                  <td style={{ maxWidth: 260 }} title={o.summary && !summary ? o.summary : undefined}>
                     {o.deny_reason ? (
                       <span className="reason">{o.deny_reason}</span>
-                    ) : o.summary ? (
-                      <span className="cell-sub"><span className="ai-tag">AI</span>{o.summary}</span>
+                    ) : summary ? (
+                      <span className="cell-sub"><span className="ai-tag">AI</span>{summary}</span>
                     ) : (
                       <span className="cell-sub">{o.purpose}</span>
                     )}
@@ -152,7 +148,8 @@ export default function Orders({ data, now, loading, fresh, filter, onFilter, on
                     )}
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           )}
         </table>

@@ -1,11 +1,13 @@
 "use client";
+// One order's full story (owner: Aidan). The top reads in plain words; ids, wallet addresses, the memo
+// and raw JSON live in the collapsed "Technical details" section at the bottom.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ExceptionRow, OrderRow } from "@/lib/db-types";
-import { formatUsd, orderTrail, shortId, STEP_PROVENANCE, type DashboardData } from "@/lib/dashboard/model";
-import { exceptionText, orderText } from "@/lib/dashboard/overview";
-import { EXCEPTION_TITLE, itemLabel, paramsText, PROVENANCE_LABEL, sellerName } from "@/lib/dashboard/words";
-import { AddrLink, ExceptionStatusBadge, fullTime, Icon, SellerStatusBadge, SeverityBadge, StatusBadge, TxLink } from "./ui";
+import { explorerTxUrl, formatUsd, orderTrail, STEP_PROVENANCE, type DashboardData } from "@/lib/dashboard/model";
+import { exceptionText, orderSummary, orderText } from "@/lib/dashboard/overview";
+import { deliveryText, EXCEPTION_TITLE, itemLabel, longDate, paramsText, PROVENANCE_LABEL, sellerName } from "@/lib/dashboard/words";
+import { AddrLink, ExceptionStatusBadge, fullTime, Icon, SellerStatusBadge, SeverityBadge, StatusBadge } from "./ui";
 
 interface Props {
   order: OrderRow;
@@ -28,7 +30,8 @@ export default function OrderDrawer({ order, data, onClose, onApprove, onExcepti
   const [copied, setCopied] = useState(false);
   const seller = sellerName(live.seller_id, data.sellers);
   const item = itemLabel(live);
-  const aiSummary = live.summary ?? t.exception?.summary ?? null;
+  const aiSummary = orderSummary(live, data);
+  const paidToSeller = t.payment && t.seller ? t.payment.to_wallet === t.seller.wallet : false;
 
   useEffect(() => {
     closeRef.current?.focus();
@@ -60,9 +63,6 @@ export default function OrderDrawer({ order, data, onClose, onApprove, onExcepti
             <h2 id="drawer-title" style={{ margin: 0, fontSize: 15 }}>
               {item.charAt(0).toUpperCase() + item.slice(1)} from {seller}
             </h2>
-            <button className="muted" onClick={copy} style={{ background: "none", border: 0, padding: 0, cursor: "pointer", textAlign: "left" }} title={`${live.order_id} (click to copy)`}>
-              Order <span className="mono">{shortId(live.order_id)}</span> {copied ? "· copied" : ""}
-            </button>
           </div>
           <button className="btn btn-sm" style={{ marginLeft: "auto" }} onClick={() => onAsk(live)}>
             <Icon name="spark" />
@@ -97,7 +97,7 @@ export default function OrderDrawer({ order, data, onClose, onApprove, onExcepti
                 <div className="summary plain">{t.exception ? exceptionText(t.exception, data) : orderText(live, data)}</div>
                 {live.status === "paying" ? (
                   <div className="cell-sub">An AI summary is written once the payment settles.</div>
-                ) : (
+                ) : live.summary === null ? (
                   <button
                     className="btn btn-sm"
                     disabled={summarizing}
@@ -113,7 +113,7 @@ export default function OrderDrawer({ order, data, onClose, onApprove, onExcepti
                     {summarizing ? <Icon name="refresh" className="spin" /> : <Icon name="spark" />}
                     {summarizing ? "Writing summary…" : "Generate one-line summary"}
                   </button>
-                )}
+                ) : null}
               </div>
             )}
           </div>
@@ -149,20 +149,18 @@ export default function OrderDrawer({ order, data, onClose, onApprove, onExcepti
             <h3>Order</h3>
             <dl className="kv">
               <dt>Seller</dt>
-              <dd style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }} title={live.seller_id}>
+              <dd style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                 {seller}
                 {t.seller && <SellerStatusBadge status={t.seller.status} />}
               </dd>
               <dt>Asked for</dt>
-              <dd title={`${live.item} ${JSON.stringify(live.params)}`}>{paramsText(live.params)}</dd>
+              <dd>{paramsText(live.params)}</dd>
               <dt>Purpose</dt>
               <dd>{live.purpose}</dd>
               <dt>Max amount</dt>
               <dd className="num">{formatUsd(live.max_amount)}</dd>
-              <dt>Quote</dt>
-              <dd className="num">
-                {formatUsd(live.quote_amount)} {live.quote_wallet && <>to <AddrLink addr={live.quote_wallet} /></>}
-              </dd>
+              <dt>Seller&apos;s price</dt>
+              <dd className="num">{formatUsd(live.quote_amount)}</dd>
               <dt>Created</dt>
               <dd>{fullTime(live.created_at)}</dd>
             </dl>
@@ -170,26 +168,28 @@ export default function OrderDrawer({ order, data, onClose, onApprove, onExcepti
 
           {t.payment && (
             <div>
-              <h3>Payment (from the chain)</h3>
+              <h3>Payment</h3>
               <dl className="kv">
-                <dt>Transaction</dt>
-                <dd><TxLink sig={t.payment.tx_signature} /></dd>
                 <dt>Amount</dt>
                 <dd className="num">{formatUsd(t.payment.amount)}</dd>
-                <dt>From → to</dt>
-                <dd><AddrLink addr={t.payment.from_wallet} /> → <AddrLink addr={t.payment.to_wallet} /></dd>
-                <dt>Memo</dt>
-                <dd className="mono" title={t.payment.memo ?? undefined}>{shortId(t.payment.memo)}</dd>
+                <dt>Paid to</dt>
+                <dd>{paidToSeller ? seller : <span className="reason crit">a wallet that isn&apos;t the seller&apos;s</span>}</dd>
                 <dt>Paid at</dt>
                 <dd>{fullTime(t.payment.block_time)}</dd>
+                <dt>Proof</dt>
+                <dd>
+                  <a href={explorerTxUrl(t.payment.tx_signature)} target="_blank" rel="noreferrer" title={t.payment.tx_signature}>
+                    View on Solana <Icon name="external" />
+                  </a>
+                </dd>
               </dl>
             </div>
           )}
 
           {t.delivery && (
             <div>
-              <h3>Delivery ({t.delivery.passed ? "passed" : "failed"})</h3>
-              <div className="code">{t.delivery.body || "(the seller sent nothing)"}</div>
+              <h3>What the seller delivered ({t.delivery.passed ? "checks passed" : "checks failed"})</h3>
+              <div className="summary plain">{deliveryText(t.delivery.body)}</div>
             </div>
           )}
 
@@ -208,7 +208,7 @@ export default function OrderDrawer({ order, data, onClose, onApprove, onExcepti
                 <tbody>
                   {t.journal.map((j) => (
                     <tr key={j.entry_id}>
-                      <td>{j.entry_date}</td>
+                      <td title={j.entry_date}>{longDate(j.entry_date)}</td>
                       <td>{j.debit_account}</td>
                       <td>{j.credit_account}</td>
                       <td className="right num">{formatUsd(j.amount)}</td>
@@ -235,6 +235,67 @@ export default function OrderDrawer({ order, data, onClose, onApprove, onExcepti
               </div>
             </div>
           )}
+
+          <details className="tech">
+            <summary>Technical details</summary>
+            <dl className="kv">
+              <dt>Order ID</dt>
+              <dd>
+                <button className="mono linklike" onClick={copy} title="Copy">
+                  {live.order_id}
+                </button>
+                {copied && <span className="muted"> · copied</span>}
+              </dd>
+              <dt>Status</dt>
+              <dd className="mono">{live.status}</dd>
+              <dt>Seller ID</dt>
+              <dd className="mono">{live.seller_id}</dd>
+              <dt>Item</dt>
+              <dd className="mono">{live.item} {JSON.stringify(live.params)}</dd>
+              {live.quote_wallet && (
+                <>
+                  <dt>Quote wallet</dt>
+                  <dd><AddrLink addr={live.quote_wallet} label={live.quote_wallet} /></dd>
+                </>
+              )}
+              {t.payment && (
+                <>
+                  <dt>Transaction</dt>
+                  <dd className="mono"><a href={explorerTxUrl(t.payment.tx_signature)} target="_blank" rel="noreferrer">{t.payment.tx_signature}</a></dd>
+                  <dt>From → to</dt>
+                  <dd><AddrLink addr={t.payment.from_wallet} label={t.payment.from_wallet} /> → <AddrLink addr={t.payment.to_wallet} label={t.payment.to_wallet} /></dd>
+                  <dt>Memo</dt>
+                  <dd className="mono">{t.payment.memo ?? "—"}</dd>
+                </>
+              )}
+              {t.delivery && (
+                <>
+                  <dt>Delivery body</dt>
+                  <dd><div className="code">{t.delivery.body || "(empty)"}</div></dd>
+                  <dt>Delivery checks</dt>
+                  <dd className="mono">{JSON.stringify(t.delivery.checks)}</dd>
+                </>
+              )}
+              {live.summary && live.summary !== aiSummary && (
+                <>
+                  <dt>Stored summary</dt>
+                  <dd>{live.summary}</dd>
+                </>
+              )}
+              {t.exception && (
+                <>
+                  <dt>Exception</dt>
+                  <dd className="mono">{t.exception.type} · {t.exception.severity} · {t.exception.status}</dd>
+                  {t.exception.summary && (
+                    <>
+                      <dt>Exception note</dt>
+                      <dd>{t.exception.summary}</dd>
+                    </>
+                  )}
+                </>
+              )}
+            </dl>
+          </details>
         </div>
       </aside>
     </>

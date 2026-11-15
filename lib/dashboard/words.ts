@@ -83,6 +83,57 @@ export function orderSentence(order: OrderRow, seller: string): string {
   }
 }
 
+// A stored summary is shown only if it reads like plain business English. Summaries written before
+// the current prompt (lib/summaries.ts), and booking.ts's factual notes on exceptions, can carry
+// order ids, base-unit amounts, wallet addresses or system words; those fall back to the sentences
+// here, and the stored text stays in the tooltip and the drawer's technical details.
+const RAW_IN_TEXT = [
+  /\b[a-z]+_[a-z_]+\b/, // snake_case (price_quote, pending_review)
+  /\b(?=[0-9a-f]*\d)[0-9a-f]{8,}\b/, // an order id or a piece of one
+  /\b[1-9A-HJ-NP-Za-km-z]{32,}\b/, // a wallet address or transaction signature
+  /(?<![$.\d])\d{5,}\b/, // base units (100000), not dollars
+  /\b(streams|webhook|memo|devnet|deterministic|json|http|utc|x402)\b/i,
+];
+
+/** The summary if it's readable, else null. A seller id in place of its name (dataco for DataCo) also fails. */
+export function readableSummary(text: string | null | undefined, sellers: SellerRow[]): string | null {
+  if (!text || !text.trim()) return null;
+  if (RAW_IN_TEXT.some((re) => re.test(text))) return null;
+  const idIn = (id: string) => new RegExp(`\\b${id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(text);
+  if (sellers.some((s) => s.name !== s.seller_id && idIn(s.seller_id))) return null;
+  return text;
+}
+
+/** "2026-11-13" -> "Nov 13, 2026" (journal entry dates). Anything else is shown as is. */
+export function longDate(isoDate: string): string {
+  const day = shortDate(isoDate);
+  return day ? `${day}, ${isoDate.slice(0, 4)}` : isoDate;
+}
+
+const usd = (n: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
+
+/**
+ * What the seller delivered, in words. A price quote reads "SOL was $142.10 on Nov 13 (source: DataCo)";
+ * other JSON objects list their fields; an empty body or text that isn't a JSON object says so. The
+ * raw body stays in the drawer's technical details.
+ */
+export function deliveryText(body: string | null): string {
+  if (!body || !body.trim()) return "Nothing was delivered.";
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    return "The delivery couldn't be read.";
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return "The delivery couldn't be read.";
+  const d = parsed as Record<string, unknown>;
+  if (typeof d.ticker === "string" && typeof d.price_usd === "number" && typeof d.date === "string") {
+    const source = typeof d.source === "string" ? ` (source: ${d.source})` : "";
+    return `${d.ticker.toUpperCase()} was ${usd(d.price_usd)} on ${shortDate(d.date) ?? d.date}${source}.`;
+  }
+  return paramsText(d);
+}
+
 /** The fixed review line for a pending_review order: the numbers a human decides on. */
 export function reviewSentence(order: OrderRow, seller: string, reviewOver: number): string {
   return `Your agent wants to buy ${itemPhrase(order)} from ${seller} for ${dollars(order.max_amount)}. Over your ${dollars(reviewOver)} review limit.`;
@@ -93,7 +144,7 @@ export function exceptionSentence(exc: ExceptionRow, order: OrderRow | null, pay
   const paidAmount = payment?.amount ?? order?.quote_amount ?? order?.max_amount ?? null;
   switch (exc.type) {
     case "no_order":
-      return `${payment ? dollars(payment.amount) : "Money"} sent to an unknown wallet with no order behind it. Possible stolen key.`;
+      return `${payment ? dollars(payment.amount) : "Money"} left the wallet with no order behind it. Possible stolen key.`;
     case "wallet_mismatch":
       return "Payment went to a different wallet than the order.";
     case "amount_mismatch":
@@ -164,7 +215,7 @@ export function toolLabel(name: string): string {
 }
 
 /** config/rules.json `network` (the CAIP-2 id x402 quotes send) -> its plain name. */
-const NETWORK_LABEL: Record<string, string> = { "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1": "Solana devnet" };
+const NETWORK_LABEL: Record<string, string> = { "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1": "Solana (test network)" };
 
 export function networkLabel(network: string): string {
   return has(NETWORK_LABEL, network) ? NETWORK_LABEL[network] : network;

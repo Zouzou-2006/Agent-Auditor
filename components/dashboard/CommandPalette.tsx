@@ -3,8 +3,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ExceptionRow, OrderRow, SellerRow } from "@/lib/db-types";
-import { formatUsd, shortId } from "@/lib/dashboard/model";
-import { EXCEPTION_STATUS_LABEL, EXCEPTION_TITLE, friendlyStatus, sellerName, SEVERITY_LABEL } from "@/lib/dashboard/words";
+import { formatUsd } from "@/lib/dashboard/model";
+import { EXCEPTION_STATUS_LABEL, EXCEPTION_TITLE, friendlyStatus, itemLabel, sellerName, SEVERITY_LABEL } from "@/lib/dashboard/words";
 import { Icon } from "./ui";
 
 export type PaletteAction =
@@ -60,9 +60,9 @@ export default function CommandPalette({ sections, orders, exceptions, sellers, 
         return {
           group: "Orders",
           icon: "orders",
-          label: `${shortId(o.order_id)} · ${seller} · ${formatUsd(o.max_amount)}`,
+          label: `${itemLabel(o)} · ${seller} · ${formatUsd(o.max_amount)}`,
           sub: o.deny_reason ?? friendlyStatus(o.status),
-          haystack: `${o.order_id} ${o.seller_id} ${seller} ${o.item} ${o.status} ${friendlyStatus(o.status)} ${o.deny_reason ?? ""} ${o.purpose}`.toLowerCase(),
+          haystack: `${o.order_id} ${o.seller_id} ${seller} ${o.item} ${itemLabel(o)} ${o.status} ${friendlyStatus(o.status)} ${o.deny_reason ?? ""} ${o.purpose}`.toLowerCase(),
           action: { kind: "order", order: o } as PaletteAction,
         };
       }),
@@ -129,7 +129,7 @@ export default function CommandPalette({ sections, orders, exceptions, sellers, 
                 {header}
                 <button className="palette-item" role="option" aria-selected={i === active} onMouseMove={() => setActive(i)} onClick={() => run(i)}>
                   <Icon name={it.icon} />
-                  <span className={it.group === "Orders" ? "mono" : undefined}>{it.label}</span>
+                  <span>{it.label}</span>
                   {it.sub && <span className="sub">{it.sub}</span>}
                 </button>
               </div>

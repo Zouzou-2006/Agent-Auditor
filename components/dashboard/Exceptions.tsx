@@ -2,9 +2,9 @@
 
 import { useMemo, useState } from "react";
 import type { ExceptionRow, ExceptionStatus, OrderRow } from "@/lib/db-types";
-import { SEVERITIES, shortId, type DashboardData } from "@/lib/dashboard/model";
+import { SEVERITIES, type DashboardData } from "@/lib/dashboard/model";
 import { exceptionText } from "@/lib/dashboard/overview";
-import { EXCEPTION_STATUS_LABEL, EXCEPTION_TITLE } from "@/lib/dashboard/words";
+import { EXCEPTION_STATUS_LABEL, EXCEPTION_TITLE, itemLabel } from "@/lib/dashboard/words";
 import { Empty, ExceptionStatusBadge, fullTime, SeverityBadge, SkeletonRows, timeAgo, TxLink } from "./ui";
 
 interface Props {
@@ -67,14 +67,14 @@ export default function Exceptions({ data, now, loading, fresh, onOpenOrder, onA
                   <tr key={e.exception_id} className={fresh.has(e.exception_id) ? "fresh" : undefined}>
                     <td><SeverityBadge severity={e.severity} /></td>
                     <td style={{ whiteSpace: "nowrap" }} title={e.type}>{EXCEPTION_TITLE[e.type]}</td>
-                    <td style={{ maxWidth: 360 }}>{exceptionText(e, data)}</td>
+                    <td style={{ maxWidth: 360 }} title={e.summary ?? undefined}>{exceptionText(e, data)}</td>
                     <td>
                       {order ? (
-                        <button className="mono" style={{ background: "none", border: 0, padding: 0, color: "var(--accent)", cursor: "pointer" }} onClick={() => onOpenOrder(order)}>
-                          {shortId(order.order_id)}
+                        <button className="linklike" onClick={() => onOpenOrder(order)} title={`Order ${order.order_id}`}>
+                          {itemLabel(order)}
                         </button>
                       ) : (
-                        <span className="muted">none</span>
+                        <span className="muted">No order</span>
                       )}
                     </td>
                     <td><TxLink sig={e.tx_signature} /></td>

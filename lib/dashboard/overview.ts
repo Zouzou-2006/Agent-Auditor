@@ -5,7 +5,7 @@
 
 import type { ExceptionRow, ExceptionSeverity, OrderRow } from "../db-types";
 import { outgoing, paymentTxByOrder, type DashboardData, type Rules } from "./model";
-import { exceptionSentence, orderSentence, reviewSentence, sellerName } from "./words";
+import { exceptionSentence, orderSentence, readableSummary, reviewSentence, sellerName } from "./words";
 
 export const DASHBOARD_TZ = "America/New_York";
 const DAY_MS = 86_400_000;
@@ -70,22 +70,47 @@ export function etClock(ms: number): string {
 
 const orderOf = (data: DashboardData, id: string | null) => (id ? (data.orders.find((o) => o.order_id === id) ?? null) : null);
 
-/** The display sentence for an exception: its summary, else the plain-language fallback. */
+const paymentOf = (data: DashboardData, sig: string | null) => (sig ? (data.payments.find((p) => p.tx_signature === sig) ?? null) : null);
+
+/**
+ * The display sentence for an exception, always built from its rows. exceptions.summary is filled by
+ * lib/booking.ts with a factual note (raw amounts, wallet addresses), and /api/summaries only writes
+ * null summaries, so it is never AI-written; it stays visible in tooltips as the stored note.
+ */
 export function exceptionText(exc: ExceptionRow, data: DashboardData): string {
-  if (exc.summary) return exc.summary;
   const order = orderOf(data, exc.order_id);
-  const payment = exc.tx_signature ? (data.payments.find((p) => p.tx_signature === exc.tx_signature) ?? null) : null;
-  return exceptionSentence(exc, order, payment, order ? sellerName(order.seller_id, data.sellers) : null);
+  return exceptionSentence(exc, order, paymentOf(data, exc.tx_signature), order ? sellerName(order.seller_id, data.sellers) : null);
 }
 
-/** The display sentence for an order: its summary, else the plain-language fallback. */
+/** The order's AI summary when it reads as plain English (readableSummary), else null. */
+export function orderSummary(order: OrderRow, data: DashboardData): string | null {
+  return readableSummary(order.summary, data.sellers);
+}
+
+/** The display sentence for an order: its readable AI summary, else the plain-language fallback. */
 export function orderText(order: OrderRow, data: DashboardData): string {
-  return order.summary ?? orderSentence(order, sellerName(order.seller_id, data.sellers));
+  return orderSummary(order, data) ?? orderSentence(order, sellerName(order.seller_id, data.sellers));
+}
+
+/** The stored summary when the screen shows something else in its place (for the tooltip), else null. */
+function hiddenNote(stored: string | null, shown: string): string | null {
+  return stored && stored !== shown ? stored : null;
 }
 
 export type AttentionItem =
-  | { kind: "pending"; key: string; at: string; text: string; amount: number; order: OrderRow }
-  | { kind: "exception"; key: string; at: string; text: string; amount: number | null; exception: ExceptionRow; order: OrderRow | null };
+  | { kind: "pending"; key: string; at: string; text: string; note: string | null; amount: number; order: OrderRow }
+  | {
+      kind: "exception";
+      key: string;
+      at: string;
+      text: string;
+      note: string | null;
+      amount: number | null;
+      /** Where the money went; shown for a payment with no order, whose only evidence is the payment. */
+      toWallet: string | null;
+      exception: ExceptionRow;
+      order: OrderRow | null;
+    };
 
 const SEVERITY_RANK: Record<ExceptionSeverity, number> = { critical: 0, high: 1, medium: 2 };
 
@@ -94,26 +119,25 @@ export function attentionItems(data: DashboardData, rules: Rules): AttentionItem
   const pending: AttentionItem[] = data.orders
     .filter((o) => o.status === "pending_review")
     .sort((a, b) => b.created_at.localeCompare(a.created_at))
-    .map((o) => ({
-      kind: "pending",
-      key: o.order_id,
-      at: o.created_at,
-      text: o.summary ?? reviewSentence(o, sellerName(o.seller_id, data.sellers), rules.human_review_over),
-      amount: o.max_amount,
-      order: o,
-    }));
+    .map((o) => {
+      const text = orderSummary(o, data) ?? reviewSentence(o, sellerName(o.seller_id, data.sellers), rules.human_review_over);
+      return { kind: "pending", key: o.order_id, at: o.created_at, text, note: hiddenNote(o.summary, text), amount: o.max_amount, order: o };
+    });
   const exceptions: AttentionItem[] = data.exceptions
     .filter((e) => e.status === "open")
     .sort((a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity] || b.created_at.localeCompare(a.created_at))
     .map((e) => {
-      const payment = e.tx_signature ? data.payments.find((p) => p.tx_signature === e.tx_signature) : undefined;
+      const payment = paymentOf(data, e.tx_signature);
       const order = orderOf(data, e.order_id);
+      const text = exceptionText(e, data);
       return {
         kind: "exception",
         key: e.exception_id,
         at: e.created_at,
-        text: exceptionText(e, data),
+        text,
+        note: hiddenNote(e.summary, text),
         amount: payment?.amount ?? order?.quote_amount ?? null,
+        toWallet: payment?.to_wallet ?? null,
         exception: e,
         order,
       };
@@ -174,6 +198,8 @@ export interface ActivityRow {
   kind: ActivityKind;
   critical: boolean;
   text: string;
+  /** The stored summary when `text` replaced it, for the row's tooltip. */
+  note: string | null;
   /** Base units shown right-aligned; for a blocked order this is what it would have cost. */
   amount: number | null;
   order: OrderRow | null;
@@ -193,27 +219,32 @@ const ORDER_KIND: Record<OrderRow["status"], ActivityKind> = {
 export function recentActivity(data: DashboardData, limit = 8): ActivityRow[] {
   const txByOrder = paymentTxByOrder(data.payments);
   const rows: ActivityRow[] = [
-    ...data.orders.map((o) => ({
-      key: `o-${o.order_id}`,
-      rowKey: o.order_id,
-      at: o.created_at,
-      kind: ORDER_KIND[o.status],
-      critical: false,
-      text: orderText(o, data),
-      amount: o.quote_amount ?? o.max_amount,
-      order: o,
-      tx: txByOrder.get(o.order_id) ?? null,
-    })),
+    ...data.orders.map((o) => {
+      const text = orderText(o, data);
+      return {
+        key: `o-${o.order_id}`,
+        rowKey: o.order_id,
+        at: o.created_at,
+        kind: ORDER_KIND[o.status],
+        critical: false,
+        text,
+        note: hiddenNote(o.summary, text),
+        amount: o.quote_amount ?? o.max_amount,
+        order: o,
+        tx: txByOrder.get(o.order_id) ?? null,
+      };
+    }),
     ...data.exceptions.map((e) => {
-      const payment = e.tx_signature ? data.payments.find((p) => p.tx_signature === e.tx_signature) : undefined;
+      const text = exceptionText(e, data);
       return {
         key: `e-${e.exception_id}`,
         rowKey: e.exception_id,
         at: e.created_at,
         kind: "exception" as const,
         critical: e.severity === "critical",
-        text: exceptionText(e, data),
-        amount: payment?.amount ?? null,
+        text,
+        note: hiddenNote(e.summary, text),
+        amount: paymentOf(data, e.tx_signature)?.amount ?? null,
         order: orderOf(data, e.order_id),
         tx: e.tx_signature,
       };

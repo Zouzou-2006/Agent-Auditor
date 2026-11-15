@@ -91,8 +91,10 @@ describe("attentionItems / attentionLevel", () => {
     const items = attentionItems(d, rules);
     expect(items.map((i) => i.key)).toEqual(["p1", "e-crit", "e-high"]);
     expect(items[0].text).toBe("Your agent wants to buy a SOL price from DataCo for $0.60. Over your $0.50 review limit.");
-    expect(items[1].text).toBe("$0.25 sent to an unknown wallet with no order behind it. Possible stolen key.");
-    expect(items[2].text).toBe("CheapData sent nothing.");
+    expect(items[1].text).toBe("$0.25 left the wallet with no order behind it. Possible stolen key.");
+    // Exception text is always built from the rows; the stored summary (booking.ts's note) moves to the tooltip.
+    expect(items[2].text).toBe("Paid cheapdata (not approved) $0.10 and got nothing back.");
+    expect(items[2].note).toBe("CheapData sent nothing.");
     expect(attentionLevel(items)).toBe("critical");
   });
 
