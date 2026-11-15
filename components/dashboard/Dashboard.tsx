@@ -68,6 +68,9 @@ function isTyping(target: EventTarget | null): boolean {
 function rowKeys(d: DashboardData): Set<string> {
   return new Set([
     ...d.orders.map((o) => `${o.order_id}`),
+    // A status change is "fresh" too, so the Overview's result stamp can animate in when it flips.
+    ...d.orders.map((o) => `status:${o.order_id}:${o.status}`),
+    ...d.exceptions.map((e) => `status:${e.exception_id}:${e.status}`),
     ...d.payments.map((p) => p.tx_signature),
     ...d.exceptions.map((e) => e.exception_id),
     ...d.journal_entries.map((j) => j.entry_id),
@@ -516,6 +519,7 @@ export default function Dashboard({ rules, gatewayWallet }: { rules: Rules; gate
         <OrderDrawer
           order={drawer}
           data={data}
+          now={now}
           onClose={() => setDrawer(null)}
           onApprove={approveOrder}
           onException={exceptionAction}

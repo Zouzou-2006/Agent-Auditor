@@ -268,11 +268,14 @@ td.right, th.right { text-align: right; }
 /* ---------- overview ---------- */
 .ov { display: flex; flex-direction: column; gap: 24px; }
 
-.hero { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 24px 40px; align-items: center; padding: 24px var(--pad); }
+/* Left: what the auditor did. Right: today's spend, set close with a divider instead of empty space. */
+.hero { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 340px); gap: 24px 32px; align-items: center; padding: 26px var(--pad) 26px 26px; }
 .hero-title { margin: 0; font-size: var(--fs-title); font-weight: 650; letter-spacing: -0.5px; line-height: 1.25; }
-.hero-sub { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; font-size: var(--fs-small); color: var(--muted); }
+.hero-lede { margin: 8px 0 0; color: var(--text-2); max-width: 62ch; }
+.hero-sub { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 14px; font-size: var(--fs-small); color: var(--muted); }
 .hero-sub .live { font-size: var(--fs-small); }
-.hero-spend { display: flex; flex-direction: column; gap: 8px; }
+.hero-spend { display: flex; flex-direction: column; gap: 8px; padding-left: 32px; border-left: 1px solid var(--border); }
+@media (max-width: 760px) { .hero-spend { padding-left: 0; border-left: 0; padding-top: 18px; border-top: 1px solid var(--border); } }
 .hero-spend-label { font-size: var(--fs-head); color: var(--text); font-weight: 600; }
 .hero-spend-value { font-size: var(--fs-big); font-weight: 650; letter-spacing: -1.2px; line-height: 1.05; font-variant-numeric: tabular-nums; color: var(--accent); text-shadow: 0 0 28px rgba(34, 211, 238, 0.25); }
 .hero-spend-cap { font-size: var(--fs-small); color: var(--muted); }
@@ -284,6 +287,8 @@ td.right, th.right { text-align: right; }
 .stat-label { font-size: var(--fs-head); color: var(--text); font-weight: 600; }
 .stat-value { font-size: var(--fs-big); font-weight: 650; letter-spacing: -1.2px; line-height: 1.05; font-variant-numeric: tabular-nums; }
 .stat-foot { font-size: var(--fs-small); color: var(--text-2); }
+.stat-aside { font-size: var(--fs-head); font-weight: 550; letter-spacing: 0; color: var(--text-2); }
+.crit-text { color: var(--critical); }
 
 .activity { list-style: none; margin: 0; padding: 6px 0; }
 .activity li { display: flex; align-items: center; gap: 12px; padding: 10px var(--pad); min-height: 52px; transition: background 0.12s; }
@@ -297,9 +302,42 @@ td.right, th.right { text-align: right; }
 .act-ico.crit, .attn-ico.crit { color: var(--critical); border-color: var(--critical-line); background: var(--critical-soft); }
 .act-text { min-width: 0; flex: 1; font-size: var(--fs-body); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .act-link { margin-left: 8px; font-size: var(--fs-small); white-space: nowrap; }
-.act-amount { min-width: 64px; text-align: right; font-size: var(--fs-body); white-space: nowrap; }
-.act-when { min-width: 64px; text-align: right; font-size: var(--fs-small); color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
-@media (max-width: 640px) { .act-text { white-space: normal; } .act-amount { min-width: 0; } .act-when { min-width: 0; } }
+.act-match { flex: none; width: 262px; display: flex; justify-content: flex-start; }
+.act-amount { min-width: 64px; text-align: right; font-size: var(--fs-body); white-space: nowrap; font-weight: 550; }
+.act-amount.struck { text-decoration: line-through; text-decoration-thickness: 1px; color: var(--muted); font-weight: 400; }
+.act-stamp { flex: none; width: 128px; display: flex; justify-content: center; }
+.act-when { min-width: 56px; text-align: right; font-size: var(--fs-small); color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+/* Critical rows (a payment with no order, a wrong wallet): a red edge and a faint red tint. */
+.activity li.critical { box-shadow: inset 3px 0 0 var(--critical); background: rgba(255, 118, 118, 0.06); }
+.activity li.critical:hover { background: rgba(255, 118, 118, 0.1); }
+@media (max-width: 1100px) { .act-match { display: none; } }
+@media (max-width: 640px) {
+  .activity li { flex-wrap: wrap; row-gap: 6px; }
+  .act-text { white-space: normal; flex-basis: 100%; }
+  .act-amount, .act-when { min-width: 0; }
+  .act-stamp { width: auto; justify-content: flex-start; }
+}
+
+/* ---------- result stamps ---------- */
+/* Inked-stamp look: uppercase, bordered, a little crooked. Status colors only. */
+.stamp { display: inline-block; font-size: var(--fs-small); font-weight: 750; letter-spacing: 0.09em; text-transform: uppercase; white-space: nowrap; line-height: 1; padding: 5px 8px 4px; border: 1.5px solid currentColor; border-radius: 5px; transform: rotate(-4deg); }
+.stamp-booked { color: var(--good); background: var(--good-soft); }
+.stamp-blocked { color: var(--blocked); background: var(--blocked-soft); border-color: var(--blocked-line); }
+.stamp-flagged { color: var(--critical); background: var(--critical-soft); }
+.stamp-approval, .stamp-unconfirmed { color: var(--warning); background: var(--warning-soft); }
+.stamp-in { animation: stampin 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.2); }
+@keyframes stampin { from { transform: rotate(-4deg) scale(1.5); opacity: 0; } 70% { transform: rotate(-4deg) scale(0.94); opacity: 1; } to { transform: rotate(-4deg) scale(1); } }
+
+/* ---------- three-way match: Order ↔ Payment ↔ Delivery ---------- */
+.match { display: inline-flex; align-items: center; }
+.match-step { display: inline-flex; align-items: center; }
+.match-link { width: 10px; height: 1.5px; background: var(--border-strong); }
+.match-link:not(.off) { background: var(--text-2); }
+.leg { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 7px; border-radius: 6px; font-size: var(--fs-small); font-weight: 550; border: 1px solid var(--border-strong); color: var(--muted); background: var(--raised); white-space: nowrap; cursor: default; }
+.leg i { font-style: normal; font-weight: 700; }
+.leg-ok { color: var(--good); border-color: var(--good-line); background: var(--good-soft); }
+.leg-failed { color: var(--critical); border-color: var(--critical-line); background: var(--critical-soft); }
+.leg-blocked { color: var(--blocked); border-color: var(--blocked-line); background: var(--blocked-soft); }
 
 /* ---------- needs-you chip + drawer ---------- */
 .need-chip { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px 0 11px; border-radius: 99px; border: 1px solid var(--border-strong); background: var(--raised); color: var(--text-2); cursor: pointer; font-weight: 550; white-space: nowrap; transition: border-color 0.15s, background 0.15s; }
@@ -334,7 +372,8 @@ td.right, th.right { text-align: right; }
 @keyframes fade { from { opacity: 0; } }
 .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(580px, 100vw); background: var(--surface); border-left: 1px solid var(--border-strong); z-index: 41; display: flex; flex-direction: column; animation: slide 0.22s cubic-bezier(0.2, 0.8, 0.2, 1); box-shadow: -30px 0 80px rgba(0, 0, 0, 0.55), inset 1px 0 0 rgba(255, 255, 255, 0.04); }
 @keyframes slide { from { transform: translateX(28px); opacity: 0; } }
-.drawer-head { padding: 18px 22px; border-bottom: 1px solid var(--border); display: flex; gap: 12px; align-items: flex-start; }
+.drawer-head { padding: 20px 22px 18px; border-bottom: 1px solid var(--border); display: flex; gap: 12px; align-items: flex-start; }
+.drawer-title { margin: 2px 0 0; font-size: var(--fs-title); font-weight: 650; letter-spacing: -0.4px; line-height: 1.2; }
 .drawer-body { padding: 22px; overflow-y: auto; display: flex; flex-direction: column; gap: 24px; }
 .drawer h3 { font-size: var(--fs-head); font-weight: 600; color: var(--text); margin: 0 0 10px; display: flex; align-items: center; gap: 8px; }
 .kv { display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 9px 14px; font-size: var(--fs-body); }

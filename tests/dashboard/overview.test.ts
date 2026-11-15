@@ -5,12 +5,16 @@ import {
   attentionItems,
   attentionLevel,
   etClock,
+  isUnconfirmed,
   lastDecisionAt,
   nextUtcMidnight,
+  orderStamp,
   recentActivity,
+  threeWay,
   weekStartEt,
   weekStats,
 } from "../../lib/dashboard/overview";
+import { auditHeadline } from "../../lib/dashboard/words";
 
 const GATEWAY = "GatewayWallet";
 const rules: Rules = {
@@ -134,6 +138,70 @@ describe("weekStats", () => {
     });
     expect(weekStats(d, GATEWAY, now)).toMatchObject({ spent: 150000, purchases: 1, blocked: 1, verified: 1 });
   });
+
+  it("splits out money with no order, and counts problems caught and purchases booked", () => {
+    const now = Date.parse("2026-11-15T15:00:00Z");
+    const d = data({
+      payments: [
+        payment({ tx_signature: "t1", block_time: "2026-11-14T10:00:10Z", order_id: "a" }),
+        payment({ tx_signature: "t2", block_time: "2026-11-14T12:00:00Z", amount: 100000 }),
+      ],
+      exceptions: [
+        exception({ exception_id: "e1", type: "no_order", severity: "critical", created_at: "2026-11-14T12:00:05Z" }),
+        exception({ exception_id: "e0", type: "wrong_data", severity: "medium", created_at: "2026-11-02T12:00:05Z" }),
+      ],
+      journal_entries: [
+        { entry_id: "j1", order_id: "a", tx_signature: "t1", entry_date: "2026-11-14", debit_account: "Data purchases expense", credit_account: "USDC - agent wallet", amount: 100000, description: "d" },
+        { entry_id: "j2", order_id: "b", tx_signature: "t9", entry_date: "2026-11-14", debit_account: "Loss on undelivered purchases", credit_account: "USDC - agent wallet", amount: 100000, description: "d" },
+        { entry_id: "j3", order_id: "c", tx_signature: "t8", entry_date: "2026-11-02", debit_account: "Data purchases expense", credit_account: "USDC - agent wallet", amount: 100000, description: "d" },
+      ],
+    });
+    expect(weekStats(d, GATEWAY, now)).toMatchObject({ spent: 200000, unmatched: 100000, caught: 1, booked: 100000 });
+  });
+});
+
+describe("auditHeadline", () => {
+  it("leads with what the auditor did", () => {
+    expect(auditHeadline({ caught: 1, blocked: 6, booked: 100000 })).toBe("Caught 1 problem this week · 6 orders blocked · $0.10 booked");
+    expect(auditHeadline({ caught: 0, blocked: 1, booked: 0 })).toBe("No problems caught this week · 1 order blocked · $0.00 booked");
+  });
+});
+
+describe("threeWay / stamps", () => {
+  const now = Date.parse("2026-11-15T15:00:00Z");
+  const booked = order({ order_id: "b", status: "booked", created_at: "2026-11-15T10:00:00Z", quote_amount: 100000, quote_wallet: "W" });
+  const clean = data({
+    orders: [booked],
+    payments: [payment({ tx_signature: "tb", block_time: "2026-11-15T10:00:05Z", order_id: "b", to_wallet: "W" })],
+    deliveries: [{ order_id: "b", received_at: "2026-11-15T10:00:04Z", body: '{"ticker":"SOL","date":"2026-11-15","price_usd":142.1,"source":"DataCo"}', checks: { received: true, format: true, matches_order: true }, passed: true }],
+  });
+
+  it("is green on all three legs for a clean purchase, with the delivery in the tooltip", () => {
+    const m = threeWay(booked, clean);
+    expect([m.order, m.payment, m.delivery]).toEqual(["ok", "ok", "ok"]);
+    expect(m.tips.delivery).toContain("SOL was $142.10 on Nov 15");
+  });
+
+  it("shows only a blocked Order leg for a denied order", () => {
+    const denied = order({ order_id: "d", status: "denied", created_at: "2026-11-15T10:00:00Z", deny_reason: "payment failed" });
+    expect(threeWay(denied, data({ orders: [denied] }))).toMatchObject({ order: "blocked", payment: null, delivery: null });
+    expect(orderStamp(denied, now)).toBe("blocked");
+  });
+
+  it("fails the payment leg on a wallet mismatch", () => {
+    const flagged = { ...booked, status: "exception" as const };
+    const d = { ...clean, orders: [flagged], exceptions: [exception({ exception_id: "e", type: "wallet_mismatch", severity: "critical", created_at: "2026-11-15T10:00:06Z", order_id: "b" })] };
+    expect(threeWay(flagged, d).payment).toBe("failed");
+    expect(orderStamp(flagged, now)).toBe("flagged");
+  });
+
+  it("calls a paid order unconfirmed after 5 minutes, not before", () => {
+    const paid = order({ order_id: "p", status: "paid", created_at: "2026-11-15T14:56:00Z" });
+    expect(isUnconfirmed(paid, now)).toBe(false);
+    expect(isUnconfirmed({ ...paid, created_at: "2026-11-15T14:54:00Z" }, now)).toBe(true);
+    expect(orderStamp({ ...paid, created_at: "2026-11-15T14:54:00Z" }, now)).toBe("unconfirmed");
+    expect(orderStamp(paid, now)).toBeNull();
+  });
 });
 
 describe("recentActivity", () => {
@@ -151,5 +219,35 @@ describe("recentActivity", () => {
     expect(rows[0]).toMatchObject({ rowKey: "e1", kind: "exception", critical: true, order: null, tx: "txz", amount: null });
     expect(rows[1]).toMatchObject({ rowKey: "o8", kind: "completed", text: "AI line", tx: "tx8", amount: 100000 });
     expect(rows[2].text).toBe("Bought a SOL price from DataCo");
+  });
+
+  it("folds an order's exception into the order's row; a payment with no order keeps its own row", () => {
+    const now = Date.parse("2026-11-15T15:00:00Z");
+    const d = data({
+      sellers: [
+        { seller_id: "dataco", name: "DataCo", url: "", wallet: "W", status: "approved" },
+        { seller_id: "cheapdata", name: "CheapData", url: "", wallet: "C", status: "approved" },
+      ],
+      orders: [
+        order({ order_id: "x", status: "exception", created_at: "2026-11-15T10:00:00Z", seller_id: "cheapdata", quote_amount: 100000 }),
+        order({ order_id: "n", status: "denied", created_at: "2026-11-15T09:00:00Z", deny_reason: "seller not approved" }),
+        order({ order_id: "s", status: "paid", created_at: "2026-11-15T08:00:00Z", quote_amount: 100000 }),
+      ],
+      payments: [
+        payment({ tx_signature: "tx", block_time: "2026-11-15T10:00:05Z", order_id: "x", to_wallet: "C" }),
+        payment({ tx_signature: "tz", block_time: "2026-11-15T11:00:00Z" }),
+      ],
+      exceptions: [
+        exception({ exception_id: "ex", type: "nothing_delivered", severity: "high", created_at: "2026-11-15T10:00:07Z", order_id: "x", tx_signature: "tx" }),
+        exception({ exception_id: "ez", type: "no_order", severity: "critical", created_at: "2026-11-15T11:00:02Z", tx_signature: "tz" }),
+      ],
+    });
+    const rows = recentActivity(d, 8, now);
+    expect(rows.map((r) => r.rowKey)).toEqual(["ez", "x", "n", "s"]);
+    expect(rows[0]).toMatchObject({ stamp: "flagged", critical: true, match: null });
+    expect(rows[1]).toMatchObject({ stamp: "flagged", text: "Paid CheapData $0.10 and got nothing back.", exception: { exception_id: "ex" } });
+    expect(rows[1].freshKeys).toEqual(expect.arrayContaining(["x", "tx", "ex", "status:x:exception"]));
+    expect(rows[2]).toMatchObject({ stamp: "blocked", struck: true });
+    expect(rows[3]).toMatchObject({ stamp: "unconfirmed", text: "Paid DataCo for a SOL price, not confirmed on chain" });
   });
 });

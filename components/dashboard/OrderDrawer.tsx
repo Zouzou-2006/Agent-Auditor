@@ -5,13 +5,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ExceptionRow, OrderRow } from "@/lib/db-types";
 import { explorerTxUrl, formatUsd, orderTrail, STEP_PROVENANCE, type DashboardData } from "@/lib/dashboard/model";
-import { exceptionText, orderSummary, orderText } from "@/lib/dashboard/overview";
+import { exceptionText, orderStamp, orderSummary, orderText, threeWay } from "@/lib/dashboard/overview";
 import { deliveryText, EXCEPTION_TITLE, itemLabel, longDate, paramsText, PROVENANCE_LABEL, sellerName } from "@/lib/dashboard/words";
-import { AddrLink, ExceptionStatusBadge, fullTime, Icon, SellerStatusBadge, SeverityBadge, StatusBadge } from "./ui";
+import { AddrLink, ExceptionStatusBadge, fullTime, Icon, MatchChips, SellerStatusBadge, SeverityBadge, Stamp, StatusBadge } from "./ui";
 
 interface Props {
   order: OrderRow;
   data: DashboardData;
+  now: number;
   onClose: () => void;
   onApprove: (order: OrderRow) => void;
   onException: (exc: ExceptionRow, action: "approve" | "block_seller") => void;
@@ -21,7 +22,7 @@ interface Props {
 
 const STEP_ICON = { done: "check", failed: "x", waiting: "clock", skipped: "minus" } as const;
 
-export default function OrderDrawer({ order, data, onClose, onApprove, onException, onAsk, onSummarize }: Props) {
+export default function OrderDrawer({ order, data, now, onClose, onApprove, onException, onAsk, onSummarize }: Props) {
   const [summarizing, setSummarizing] = useState(false);
   // Re-read the order from live data so the drawer updates when its status changes.
   const live = data.orders.find((o) => o.order_id === order.order_id) ?? order;
@@ -31,6 +32,8 @@ export default function OrderDrawer({ order, data, onClose, onApprove, onExcepti
   const seller = sellerName(live.seller_id, data.sellers);
   const item = itemLabel(live);
   const aiSummary = orderSummary(live, data);
+  const match = useMemo(() => threeWay(live, data), [live, data]);
+  const stamp = orderStamp(live, now);
   const paidToSeller = t.payment && t.seller ? t.payment.to_wallet === t.seller.wallet : false;
 
   useEffect(() => {
@@ -55,14 +58,15 @@ export default function OrderDrawer({ order, data, onClose, onApprove, onExcepti
       <div className="overlay" onClick={onClose} />
       <aside className="drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title">
         <div className="drawer-head">
-          <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 0 }}>
-            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-              <StatusBadge status={live.status} />
-              {live.deny_reason && <span className="reason">{live.deny_reason}</span>}
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
+            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              {stamp ? <Stamp kind={stamp} title={live.status} /> : <StatusBadge status={live.status} />}
+              {live.deny_reason && <span className="reason">&ldquo;{live.deny_reason}&rdquo;</span>}
             </div>
-            <h2 id="drawer-title" style={{ margin: 0, fontSize: 15 }}>
+            <h2 id="drawer-title" className="drawer-title">
               {item.charAt(0).toUpperCase() + item.slice(1)} from {seller}
             </h2>
+            <MatchChips match={match} />
           </div>
           <button className="btn btn-sm" style={{ marginLeft: "auto" }} onClick={() => onAsk(live)}>
             <Icon name="spark" />

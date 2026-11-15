@@ -4,7 +4,8 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import type { ExceptionSeverity, ExceptionStatus, OrderStatus, SellerStatus } from "@/lib/db-types";
 import { explorerAddressUrl, explorerTxUrl, shortId } from "@/lib/dashboard/model";
-import { EXCEPTION_STATUS_LABEL, friendlyStatus, SELLER_STATUS_LABEL, SEVERITY_LABEL, timeShort } from "@/lib/dashboard/words";
+import type { MatchState, StampKind, ThreeWay } from "@/lib/dashboard/overview";
+import { EXCEPTION_STATUS_LABEL, friendlyStatus, SELLER_STATUS_LABEL, SEVERITY_LABEL, STAMP_LABEL, timeShort } from "@/lib/dashboard/words";
 
 const paths: Record<string, ReactNode> = {
   overview: <path d="M3 13h4v8H3zM10 9h4v12h-4zM17 4h4v17h-4z" />,
@@ -89,6 +90,42 @@ export const ExceptionStatusBadge = ({ status }: { status: ExceptionStatus }) =>
 export const SellerStatusBadge = ({ status }: { status: SellerStatus }) => (
   <Badge tone={status === "approved" ? "good" : "neutral"} raw={status}>{SELLER_STATUS_LABEL[status]}</Badge>
 );
+
+/** The result stamp (BOOKED, BLOCKED, FLAGGED, NEEDS APPROVAL, NOT CONFIRMED). `animate` plays the
+ *  stamp-down once, when the row just changed (Dashboard's fresh keys). */
+export function Stamp({ kind, animate = false, title }: { kind: StampKind; animate?: boolean; title?: string }) {
+  return (
+    <span className={`stamp stamp-${kind}${animate ? " stamp-in" : ""}`} title={title}>
+      {STAMP_LABEL[kind]}
+    </span>
+  );
+}
+
+const LEG_ICON: Record<MatchState, string> = { ok: "✓", failed: "✕", blocked: "✕", none: "·" };
+const LEG_WORD: Record<MatchState, string> = { ok: "checks out", failed: "failed", blocked: "blocked", none: "not reached yet" };
+
+/** Order ↔ Payment ↔ Delivery: three linked chips. A blocked order shows only the Order chip. */
+export function MatchChips({ match }: { match: ThreeWay }) {
+  const legs: [string, MatchState | null, string][] = [
+    ["Order", match.order, match.tips.order],
+    ["Payment", match.payment, match.tips.payment],
+    ["Delivery", match.delivery, match.tips.delivery],
+  ];
+  const shown = legs.filter((l): l is [string, MatchState, string] => l[1] !== null);
+  return (
+    <span className="match" aria-label={shown.map(([name, state]) => `${name} ${LEG_WORD[state]}`).join(", ")}>
+      {shown.map(([name, state, tip], i) => (
+        <span key={name} className="match-step">
+          {i > 0 && <span className={`match-link${state === "none" ? " off" : ""}`} aria-hidden="true" />}
+          <span className={`leg leg-${state}`} title={tip ? `${name}: ${LEG_WORD[state]}\n${tip}` : `${name}: ${LEG_WORD[state]}`}>
+            <i aria-hidden="true">{LEG_ICON[state]}</i>
+            {name}
+          </span>
+        </span>
+      ))}
+    </span>
+  );
+}
 
 export function TxLink({ sig }: { sig: string | null }) {
   if (!sig) return <span className="muted">—</span>;

@@ -1,15 +1,15 @@
 "use client";
-// Overview (owner: Aidan): a hero strip (is the agent working, what it spent today against the
-// budget), this week at a glance, and recent activity in plain English. What needs a human lives
-// in the "needs you" drawer (AttentionDrawer). Reads only the data Dashboard already loaded.
+// Overview (owner: Aidan). Leads with what the auditor did this week, then today's spend, the week's
+// numbers, and recent purchases: one row each, with a result stamp and the Order ↔ Payment ↔ Delivery
+// match. What needs a human lives in the "needs you" drawer. Reads only the data Dashboard loaded.
 
-import { useMemo, type KeyboardEvent } from "react";
+import { useMemo, useSyncExternalStore, type KeyboardEvent } from "react";
 import type { OrderRow } from "@/lib/db-types";
 import { computeOverview, explorerTxUrl, type DashboardData, type Rules } from "@/lib/dashboard/model";
-import { etClock, lastDecisionAt, nextUtcMidnight, recentActivity, weekStats, type ActivityKind, type ActivityRow } from "@/lib/dashboard/overview";
+import { etClock, lastDecisionAt, nextUtcMidnight, recentActivity, weekStats, type ActivityRow } from "@/lib/dashboard/overview";
 import { detectScenes, type Scene } from "@/lib/dashboard/scenes";
-import { dollars, timeShort } from "@/lib/dashboard/words";
-import { Empty, fullTime, Icon } from "./ui";
+import { auditHeadline, dollars, timeShort } from "@/lib/dashboard/words";
+import { Empty, fullTime, MatchChips, Stamp } from "./ui";
 
 interface Props {
   data: DashboardData;
@@ -24,15 +24,9 @@ interface Props {
   onScene: (scene: Scene) => void;
 }
 
-const ACTIVITY_ICON: Record<ActivityKind, string> = {
-  completed: "check",
-  processing: "hourglass",
-  blocked: "ban",
-  pending: "pause",
-  exception: "exceptions",
-};
-
 const HOUR_MS = 3_600_000;
+const noSubscribe = () => () => {};
+const demoFlag = () => new URLSearchParams(window.location.search).get("demo") === "1";
 
 export default function Overview({ data, rules, gatewayWallet, now, loading, live, fresh, onOpenOrder, onNavigate, onScene }: Props) {
   // The daily limit is per UTC day (gateway rule); recompute only when the UTC day changes.
@@ -40,34 +34,39 @@ export default function Overview({ data, rules, gatewayWallet, now, loading, liv
   const nowDate = useMemo(() => new Date(`${day}T12:00:00Z`), [day]);
   const today = useMemo(() => computeOverview(data, rules, gatewayWallet, nowDate), [data, rules, gatewayWallet, nowDate]);
   const week = useMemo(() => weekStats(data, gatewayWallet, now), [data, gatewayWallet, now]);
-  const activity = useMemo(() => recentActivity(data, 8), [data]);
+  const activity = useMemo(() => recentActivity(data, 8, now), [data, now]);
   const scenes = useMemo(() => detectScenes(data), [data]);
   const last = useMemo(() => lastDecisionAt(data), [data]);
   const active = last !== null && now - Date.parse(last) < HOUR_MS;
   const meterClass = today.dailyUsedPct >= 90 ? "crit" : today.dailyUsedPct >= 70 ? "warn" : "";
+  // The demo checklist is for recording the video: shown only with ?demo=1 (false on the server).
+  const showScenes = useSyncExternalStore(noSubscribe, demoFlag, () => false);
 
   return (
     <div className="ov">
-      <section className="card hero" aria-label="Agent status">
+      <section className="card hero" aria-label="This week">
         <div className="hero-status">
           {loading ? (
-            <span className="skeleton" style={{ display: "block", width: 260, height: 30 }} />
+            <span className="skeleton" style={{ display: "block", width: 420, height: 30 }} />
           ) : (
-            <h2 className="hero-title">{active ? "Your agent is active" : "Your agent is idle"}</h2>
+            <h2 className="hero-title">{auditHeadline(week)}</h2>
           )}
+          <p className="hero-lede">Checks every payment your AI agent makes: rules before it pays, the blockchain after, and what it actually received.</p>
           <div className="hero-sub">
+            <span>{active ? "Agent active" : "Agent idle"}</span>
+            <span aria-hidden="true">·</span>
             <span className={`live ${live === "live" ? "on" : live === "offline" ? "off" : ""}`}>
               <span className="dot" />
-              {live === "live" ? "Live" : live === "offline" ? "Polling" : "Connecting"}
+              {live === "live" ? "Live" : live === "offline" ? "Reconnecting…" : "Connecting…"}
             </span>
-            <span>·</span>
+            <span aria-hidden="true">·</span>
             <span>{loading ? "loading…" : last ? <>last decision <time dateTime={last} title={fullTime(last)}>{timeShort(last, now)}</time></> : "no decisions yet"}</span>
           </div>
         </div>
         <div className="hero-spend">
           <div className="hero-spend-label">Spent today</div>
           <div className="hero-spend-value num">
-            {loading ? <span className="skeleton" style={{ display: "block", width: 110, height: 34 }} /> : dollars(today.spentToday)}
+            {loading ? <span className="skeleton" style={{ display: "block", width: 110, height: 40 }} /> : dollars(today.spentToday)}
           </div>
           <div className={`meter ${meterClass}`} role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={today.dailyUsedPct} aria-label="Daily budget used">
             <span style={{ width: `${Math.max(today.dailyUsedPct, today.spentToday > 0 ? 2 : 0)}%` }} />
@@ -79,15 +78,36 @@ export default function Overview({ data, rules, gatewayWallet, now, loading, liv
       </section>
 
       <div className="ov-stats">
-        {/* Every purchase counted here is a payment read from Solana, so "confirmed" lives in this foot
-            instead of a separate card that would repeat the same number. */}
-        <Stat label="This week" loading={loading} value={dollars(week.spent)} foot={`${week.purchases} purchase${week.purchases === 1 ? "" : "s"}, confirmed on Solana · since Monday ET`} />
-        <Stat label="Rules blocked" loading={loading} value={String(week.blocked)} foot="This week · no money moved" />
+        <div className="card stat">
+          <div className="stat-label">This week</div>
+          <div className="stat-value num">
+            {loading ? (
+              <span className="skeleton" style={{ display: "block", width: 90, height: 40 }} />
+            ) : (
+              <>
+                {dollars(week.spent)}
+                {week.unmatched > 0 && (
+                  <span className="stat-aside">
+                    {" "}out · <span className="crit-text">{dollars(week.unmatched)} with no order</span>
+                  </span>
+                )}
+              </>
+            )}
+          </div>
+          <div className="stat-foot">
+            {week.purchases} purchase{week.purchases === 1 ? "" : "s"}, confirmed on Solana · since Monday ET
+          </div>
+        </div>
+        <div className="card stat">
+          <div className="stat-label">Blocked by rules</div>
+          <div className="stat-value num">{loading ? <span className="skeleton" style={{ display: "block", width: 50, height: 40 }} /> : week.blocked}</div>
+          <div className="stat-foot">This week · no money moved</div>
+        </div>
       </div>
 
       <section className="card" aria-labelledby="activity-h">
         <div className="card-head">
-          <h2 id="activity-h">Recent activity</h2>
+          <h2 id="activity-h">Recent purchases</h2>
           <span className="right">
             <button className="linklike" onClick={() => onNavigate("orders")}>All orders</button>
           </span>
@@ -96,7 +116,6 @@ export default function Overview({ data, rules, gatewayWallet, now, loading, liv
           <ul className="activity" aria-hidden="true">
             {[70, 55, 62].map((w) => (
               <li key={w}>
-                <span className="act-ico" />
                 <span className="skeleton" style={{ width: `${w}%` }} />
               </li>
             ))}
@@ -108,44 +127,34 @@ export default function Overview({ data, rules, gatewayWallet, now, loading, liv
         ) : (
           <ul className="activity">
             {activity.map((row) => (
-              <ActivityLine key={row.key} row={row} now={now} fresh={fresh.has(row.rowKey)} onOpenOrder={onOpenOrder} />
+              <ActivityLine key={row.key} row={row} now={now} fresh={row.freshKeys.some((k) => fresh.has(k))} onOpenOrder={onOpenOrder} />
             ))}
           </ul>
         )}
       </section>
 
-      <section className="card" aria-labelledby="scenes-h">
-        <div className="card-head">
-          <h2 id="scenes-h">Demo scenes</h2>
-          <span className="hint">Detected from live data, never mocked. Click a scene to open its evidence.</span>
-          <span className="right dim" style={{ fontSize: 12 }}>
-            {scenes.filter((s) => s.state === "proven").length} / 4 proven
-          </span>
-        </div>
-        <div className="scenes">
-          {scenes.map((s) => (
-            <button key={s.id} className={`scene ${s.state}`} disabled={!s.target} onClick={() => onScene(s)}>
-              <span className="scene-top">
-                <span className="scene-n">{s.n}</span>
-                <span className="scene-title">{s.title}</span>
-                <span className="scene-state">{s.state === "proven" ? "Proven" : s.state === "in_progress" ? "In progress" : "Not yet"}</span>
-              </span>
-              <span className="scene-proves">{s.proves}</span>
-              <span className="scene-evidence">{s.evidence}</span>
-            </button>
-          ))}
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function Stat({ label, value, foot, loading }: { label: string; value: string; foot: string; loading: boolean }) {
-  return (
-    <div className="card stat">
-      <div className="stat-label">{label}</div>
-      <div className="stat-value num">{loading ? <span className="skeleton" style={{ display: "block", width: 80, height: 26 }} /> : value}</div>
-      <div className="stat-foot">{foot}</div>
+      {showScenes && (
+        <section className="card" aria-labelledby="scenes-h">
+          <div className="card-head">
+            <h2 id="scenes-h">Demo scenes</h2>
+            <span className="hint">Detected from live data, never mocked. Click a scene to open its evidence.</span>
+            <span className="right dim">{scenes.filter((s) => s.state === "proven").length} / 4 proven</span>
+          </div>
+          <div className="scenes">
+            {scenes.map((s) => (
+              <button key={s.id} className={`scene ${s.state}`} disabled={!s.target} onClick={() => onScene(s)}>
+                <span className="scene-top">
+                  <span className="scene-n">{s.n}</span>
+                  <span className="scene-title">{s.title}</span>
+                  <span className="scene-state">{s.state === "proven" ? "Proven" : s.state === "in_progress" ? "In progress" : "Not yet"}</span>
+                </span>
+                <span className="scene-proves">{s.proves}</span>
+                <span className="scene-evidence">{s.evidence}</span>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 }
@@ -158,20 +167,16 @@ function ActivityLine({ row, now, fresh, onOpenOrder }: { row: ActivityRow; now:
       open();
     }
   };
-  const tone = row.kind === "exception" ? (row.critical ? "crit" : "warn") : row.kind;
-  // Paid rows link to their transaction; a payment with no order has only its transaction to show.
-  const link = row.tx && row.kind === "completed" ? "verified on chain →" : row.tx && row.kind === "exception" && !row.order ? "view on chain →" : null;
+  // Booked rows link to their transaction; a payment with no order has only its transaction to show.
+  const link = row.tx && row.kind === "completed" ? "verified on chain →" : row.tx && !row.order ? "view on chain →" : null;
   return (
     <li
-      className={`${row.order ? "clickable" : ""}${fresh ? " fresh" : ""}`}
+      className={`${row.order ? "clickable" : ""}${fresh ? " fresh" : ""}${row.critical ? " critical" : ""}`}
       onClick={open}
       onKeyDown={onKey}
       tabIndex={row.order ? 0 : undefined}
       role={row.order ? "button" : undefined}
     >
-      <span className={`act-ico ${tone}`}>
-        <Icon name={ACTIVITY_ICON[row.kind]} />
-      </span>
       <span className="act-text" title={row.note ?? undefined}>
         {row.text}
         {link && row.tx && (
@@ -180,9 +185,11 @@ function ActivityLine({ row, now, fresh, onOpenOrder }: { row: ActivityRow; now:
           </a>
         )}
       </span>
-      <span className={`act-amount num${row.kind === "blocked" ? " muted" : ""}`} title={row.kind === "blocked" ? "Not paid: blocked before payment" : undefined}>
+      <span className="act-match">{row.match && <MatchChips match={row.match} />}</span>
+      <span className={`act-amount num${row.struck ? " struck" : ""}`} title={row.struck ? "Not spent: blocked before payment" : undefined}>
         {row.amount !== null ? dollars(row.amount) : ""}
       </span>
+      <span className="act-stamp">{row.stamp && <Stamp kind={row.stamp} animate={fresh} />}</span>
       <time className="act-when" dateTime={row.at} title={fullTime(row.at)}>{timeShort(row.at, now)}</time>
     </li>
   );

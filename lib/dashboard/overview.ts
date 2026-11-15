@@ -4,8 +4,8 @@
 // (SPEC.md section 5), so the reset time is the next UTC midnight shown in ET.
 
 import type { ExceptionRow, ExceptionSeverity, OrderRow } from "../db-types";
-import { outgoing, paymentTxByOrder, type DashboardData, type Rules } from "./model";
-import { exceptionSentence, orderSentence, readableSummary, reviewSentence, sellerName } from "./words";
+import { orderTrail, outgoing, paymentTxByOrder, type DashboardData, type Rules, type TrailStep } from "./model";
+import { deliveryText, EXCEPTION_TITLE, exceptionSentence, orderSentence, readableSummary, reviewSentence, sellerName, unconfirmedSentence } from "./words";
 
 export const DASHBOARD_TZ = "America/New_York";
 const DAY_MS = 86_400_000;
@@ -166,29 +166,94 @@ export function lastDecisionAt(data: DashboardData): string | null {
 
 export interface WeekStats {
   weekStart: number;
+  /** Outgoing USDC this week (every payment out, with or without an order). */
   spent: number;
+  /** The part of `spent` with no order behind it. */
+  unmatched: number;
   purchases: number;
   blocked: number;
   verified: number;
+  /** Exceptions raised this week: problems the auditor caught. */
+  caught: number;
+  /** Purchases booked to Data purchases expense this week. */
+  booked: number;
 }
 
 /** "This week" = since Monday 00:00 ET. Verified = paid or booked orders with a matched on-chain payment. */
 export function weekStats(data: DashboardData, gatewayWallet: string | null, now: number): WeekStats {
   const weekStart = weekStartEt(now);
   const inWeek = (iso: string) => Date.parse(iso) >= weekStart;
+  // entry_date is a calendar date; noon UTC is the same date in ET.
+  const dateInWeek = (date: string) => Date.parse(`${date}T12:00:00Z`) >= weekStart;
   const payments = outgoing(data.payments, gatewayWallet).filter((p) => inWeek(p.block_time));
   const txByOrder = paymentTxByOrder(data.payments);
   return {
     weekStart,
     spent: payments.reduce((sum, p) => sum + p.amount, 0),
+    unmatched: payments.filter((p) => p.order_id === null).reduce((sum, p) => sum + p.amount, 0),
     purchases: payments.filter((p) => p.order_id !== null).length,
     blocked: data.orders.filter((o) => o.status === "denied" && inWeek(o.created_at)).length,
     verified: data.orders.filter((o) => (o.status === "paid" || o.status === "booked") && txByOrder.has(o.order_id)).length,
+    caught: data.exceptions.filter((e) => inWeek(e.created_at)).length,
+    booked: data.journal_entries
+      .filter((j) => j.debit_account === "Data purchases expense" && dateInWeek(j.entry_date))
+      .reduce((sum, j) => sum + j.amount, 0),
   };
 }
 
 /** completed ✓, processing ⏳, blocked ⊘, pending ⏸, exception ⚠ */
 export type ActivityKind = "completed" | "processing" | "blocked" | "pending" | "exception";
+
+/** The result stamp on a purchase: what happened, in one word. */
+export type StampKind = "booked" | "blocked" | "flagged" | "approval" | "unconfirmed";
+
+/** One leg of the three-way match: ok (green), failed (red), blocked (grey ✕), none (grey, not reached). */
+export type MatchState = "ok" | "failed" | "blocked" | "none";
+
+export interface ThreeWay {
+  order: MatchState;
+  /** null on a blocked order: it never got as far as a payment. */
+  payment: MatchState | null;
+  delivery: MatchState | null;
+  tips: { order: string; payment: string; delivery: string };
+}
+
+/** After this long, a "paid" order the chain hasn't confirmed is worth a human's look. */
+export const UNCONFIRMED_AFTER_MS = 5 * 60_000;
+
+export function isUnconfirmed(order: OrderRow, now: number | undefined): boolean {
+  return now !== undefined && order.status === "paid" && now - Date.parse(order.created_at) > UNCONFIRMED_AFTER_MS;
+}
+
+/**
+ * Order ↔ Payment ↔ Delivery, read from the audit trail. A wallet or amount mismatch fails the payment
+ * leg even though the payment itself arrived.
+ */
+export function threeWay(order: OrderRow, data: DashboardData): ThreeWay {
+  const t = orderTrail(order, data);
+  const step = (key: TrailStep["key"]) => t.steps.find((s) => s.key === key);
+  const rules = step("rules");
+  const quote = step("quote");
+  const payment = step("payment");
+  const delivery = step("delivery");
+  if (order.status === "denied") {
+    return { order: "blocked", payment: null, delivery: null, tips: { order: `Blocked: ${order.deny_reason ?? "no reason saved"}`, payment: "", delivery: "" } };
+  }
+  const waitingReview = t.steps.some((s) => s.key === "review" && s.state === "waiting");
+  const mismatch = t.exception?.type === "wallet_mismatch" || t.exception?.type === "amount_mismatch";
+  const leg = (s: TrailStep | undefined): MatchState => (s?.state === "done" ? "ok" : s?.state === "failed" ? "failed" : "none");
+  const deliveryTip = [delivery?.detail, t.delivery ? deliveryText(t.delivery.body) : null].filter(Boolean).join("\n");
+  return {
+    order: waitingReview ? "none" : rules?.state === "done" && quote?.state !== "failed" ? "ok" : leg(rules),
+    payment: mismatch ? "failed" : leg(payment),
+    delivery: leg(delivery),
+    tips: {
+      order: [rules?.detail, quote?.detail].filter(Boolean).join("\n"),
+      payment: mismatch && t.exception ? EXCEPTION_TITLE[t.exception.type] : (payment?.detail ?? ""),
+      delivery: deliveryTip,
+    },
+  };
+}
 
 export interface ActivityRow {
   key: string;
@@ -202,7 +267,15 @@ export interface ActivityRow {
   note: string | null;
   /** Base units shown right-aligned; for a blocked order this is what it would have cost. */
   amount: number | null;
+  /** True for a blocked order: the amount was never spent. */
+  struck: boolean;
+  stamp: StampKind | null;
+  /** Three-way match for a purchase; null for a payment with no order. */
+  match: ThreeWay | null;
+  /** Dashboard "fresh" keys that mean this row just changed (new related row or a status change). */
+  freshKeys: string[];
   order: OrderRow | null;
+  exception: ExceptionRow | null;
   tx: string | null;
 }
 
@@ -215,40 +288,83 @@ const ORDER_KIND: Record<OrderRow["status"], ActivityKind> = {
   exception: "exception",
 };
 
-/** The newest `limit` orders and exceptions, mixed, newest first. */
-export function recentActivity(data: DashboardData, limit = 8): ActivityRow[] {
+const ORDER_STAMP: Record<OrderRow["status"], StampKind | null> = {
+  booked: "booked",
+  denied: "blocked",
+  exception: "flagged",
+  pending_review: "approval",
+  paid: null,
+  paying: null,
+};
+
+/** The stamp for an order on its own; in-progress orders have none until they turn "not confirmed". */
+export function orderStamp(order: OrderRow, now?: number): StampKind | null {
+  return isUnconfirmed(order, now) ? "unconfirmed" : ORDER_STAMP[order.status];
+}
+
+/**
+ * The newest `limit` purchases, newest first: one row per order, with its exception folded in. A payment
+ * with no order is its own row. `now` turns a "paid" order older than 5 minutes into "not confirmed".
+ */
+export function recentActivity(data: DashboardData, limit = 8, now?: number): ActivityRow[] {
   const txByOrder = paymentTxByOrder(data.payments);
+  const excByOrder = new Map(data.exceptions.filter((e) => e.order_id).map((e) => [e.order_id as string, e]));
+  const entriesByOrder = new Map<string, string[]>();
+  for (const j of data.journal_entries) if (j.order_id) entriesByOrder.set(j.order_id, [...(entriesByOrder.get(j.order_id) ?? []), j.entry_id]);
   const rows: ActivityRow[] = [
     ...data.orders.map((o) => {
-      const text = orderText(o, data);
+      const exc = excByOrder.get(o.order_id) ?? null;
+      const tx = txByOrder.get(o.order_id) ?? null;
+      const unconfirmed = isUnconfirmed(o, now);
+      const seller = sellerName(o.seller_id, data.sellers);
+      const text = exc ? exceptionText(exc, data) : unconfirmed ? unconfirmedSentence(o, seller) : orderText(o, data);
+      const at = exc && exc.created_at > o.created_at ? exc.created_at : o.created_at;
       return {
         key: `o-${o.order_id}`,
         rowKey: o.order_id,
-        at: o.created_at,
+        at,
         kind: ORDER_KIND[o.status],
-        critical: false,
+        critical: exc?.severity === "critical",
         text,
-        note: hiddenNote(o.summary, text),
+        note: hiddenNote(exc ? exc.summary : o.summary, text),
         amount: o.quote_amount ?? o.max_amount,
+        struck: o.status === "denied",
+        stamp: orderStamp(o, now),
+        match: threeWay(o, data),
+        freshKeys: [
+          o.order_id,
+          `status:${o.order_id}:${o.status}`,
+          ...(tx ? [tx] : []),
+          ...(exc ? [exc.exception_id, `status:${exc.exception_id}:${exc.status}`] : []),
+          ...(entriesByOrder.get(o.order_id) ?? []),
+        ],
         order: o,
-        tx: txByOrder.get(o.order_id) ?? null,
+        exception: exc,
+        tx,
       };
     }),
-    ...data.exceptions.map((e) => {
-      const text = exceptionText(e, data);
-      return {
-        key: `e-${e.exception_id}`,
-        rowKey: e.exception_id,
-        at: e.created_at,
-        kind: "exception" as const,
-        critical: e.severity === "critical",
-        text,
-        note: hiddenNote(e.summary, text),
-        amount: paymentOf(data, e.tx_signature)?.amount ?? null,
-        order: orderOf(data, e.order_id),
-        tx: e.tx_signature,
-      };
-    }),
+    ...data.exceptions
+      .filter((e) => !e.order_id || !orderOf(data, e.order_id))
+      .map((e) => {
+        const text = exceptionText(e, data);
+        return {
+          key: `e-${e.exception_id}`,
+          rowKey: e.exception_id,
+          at: e.created_at,
+          kind: "exception" as const,
+          critical: e.severity === "critical",
+          text,
+          note: hiddenNote(e.summary, text),
+          amount: paymentOf(data, e.tx_signature)?.amount ?? null,
+          struck: false,
+          stamp: "flagged" as const,
+          match: null,
+          freshKeys: [e.exception_id, `status:${e.exception_id}:${e.status}`],
+          order: null,
+          exception: e,
+          tx: e.tx_signature,
+        };
+      }),
   ];
   return rows.sort((a, b) => b.at.localeCompare(a.at)).slice(0, limit);
 }

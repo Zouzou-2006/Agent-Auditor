@@ -134,6 +134,28 @@ export function deliveryText(body: string | null): string {
   return paramsText(d);
 }
 
+/** A "paid" order the chain still hasn't confirmed after a few minutes. */
+export function unconfirmedSentence(order: OrderRow, seller: string): string {
+  return `Paid ${seller} for ${itemPhrase(order)}, not confirmed on chain`;
+}
+
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/** The Overview headline, auditor first: "Caught 1 problem this week · 6 orders blocked · $0.10 booked". */
+export function auditHeadline(week: { caught: number; blocked: number; booked: number }): string {
+  const caught = week.caught === 0 ? "No problems caught this week" : `Caught ${plural(week.caught, "problem", "problems")} this week`;
+  return `${caught} · ${plural(week.blocked, "order", "orders")} blocked · ${dollars(week.booked)} booked`;
+}
+
+/** The result stamp on a purchase row and at the top of the order drawer. */
+export const STAMP_LABEL = {
+  booked: "Booked",
+  blocked: "Blocked",
+  flagged: "Flagged",
+  approval: "Needs approval",
+  unconfirmed: "Not confirmed",
+} as const;
+
 /** The fixed review line for a pending_review order: the numbers a human decides on. */
 export function reviewSentence(order: OrderRow, seller: string, reviewOver: number): string {
   return `Your agent wants to buy ${itemPhrase(order)} from ${seller} for ${dollars(order.max_amount)}. Over your ${dollars(reviewOver)} review limit.`;
