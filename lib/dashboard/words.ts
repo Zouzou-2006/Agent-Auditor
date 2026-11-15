@@ -139,12 +139,27 @@ export function unconfirmedSentence(order: OrderRow, seller: string): string {
   return `Paid ${seller} for ${itemPhrase(order)}, not confirmed on chain`;
 }
 
-const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+/** The label under each outcome tile's number: "1 / Problem caught", "2 / Problems caught". */
+export function outcomeLabel(kind: "caught" | "blocked" | "booked", n: number): string {
+  switch (kind) {
+    case "caught":
+      return n === 1 ? "Problem caught" : "Problems caught";
+    case "blocked":
+      return "Blocked before paying";
+    case "booked":
+      return n === 1 ? "Purchase booked" : "Purchases booked";
+  }
+}
 
-/** The Overview headline, auditor first: "Caught 1 problem this week · 6 orders blocked · $0.10 booked". */
-export function auditHeadline(week: { caught: number; blocked: number; booked: number }): string {
-  const caught = week.caught === 0 ? "No problems caught this week" : `Caught ${plural(week.caught, "problem", "problems")} this week`;
-  return `${caught} · ${plural(week.blocked, "order", "orders")} blocked · ${dollars(week.booked)} booked`;
+/** The caught tile's note: the most severe problem's title, plus how many more. */
+export function problemNote(top: ExceptionType | null, count: number): string {
+  if (!top || count === 0) return "Nothing flagged";
+  return count > 1 ? `${EXCEPTION_TITLE[top]} + ${count - 1} more` : EXCEPTION_TITLE[top];
+}
+
+/** The booked tile's note: what those purchases added to the expense account. */
+export function bookedNote(amount: number, count: number): string {
+  return count === 0 ? "Nothing booked yet" : `${dollars(amount)} to Data purchases`;
 }
 
 /** The result stamp on a purchase row and at the top of the order drawer. */

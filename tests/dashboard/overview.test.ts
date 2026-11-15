@@ -12,10 +12,11 @@ import {
   orderStamp,
   recentActivity,
   threeWay,
+  weekOutcomes,
   weekStartEt,
   weekStats,
 } from "../../lib/dashboard/overview";
-import { auditHeadline } from "../../lib/dashboard/words";
+import { bookedNote, outcomeLabel, problemNote } from "../../lib/dashboard/words";
 
 const GATEWAY = "GatewayWallet";
 const rules: Rules = {
@@ -140,7 +141,7 @@ describe("weekStats", () => {
     expect(weekStats(d, GATEWAY, now)).toMatchObject({ spent: 150000, purchases: 1, blocked: 1, verified: 1 });
   });
 
-  it("splits out money with no order, and counts problems caught and purchases booked", () => {
+  it("splits out money with no order, and counts problems caught", () => {
     const now = Date.parse("2026-11-15T15:00:00Z");
     const d = data({
       payments: [
@@ -151,13 +152,76 @@ describe("weekStats", () => {
         exception({ exception_id: "e1", type: "no_order", severity: "critical", created_at: "2026-11-14T12:00:05Z" }),
         exception({ exception_id: "e0", type: "wrong_data", severity: "medium", created_at: "2026-11-02T12:00:05Z" }),
       ],
-      journal_entries: [
-        { entry_id: "j1", order_id: "a", tx_signature: "t1", entry_date: "2026-11-14", debit_account: "Data purchases expense", credit_account: "USDC - agent wallet", amount: 100000, description: "d" },
-        { entry_id: "j2", order_id: "b", tx_signature: "t9", entry_date: "2026-11-14", debit_account: "Loss on undelivered purchases", credit_account: "USDC - agent wallet", amount: 100000, description: "d" },
-        { entry_id: "j3", order_id: "c", tx_signature: "t8", entry_date: "2026-11-02", debit_account: "Data purchases expense", credit_account: "USDC - agent wallet", amount: 100000, description: "d" },
-      ],
     });
-    expect(weekStats(d, GATEWAY, now)).toMatchObject({ spent: 200000, unmatched: 100000, caught: 1, booked: 100000 });
+    expect(weekStats(d, GATEWAY, now)).toMatchObject({ spent: 200000, unmatched: 100000, caught: 1 });
+  });
+});
+
+describe("weekOutcomes (the three tiles)", () => {
+  const now = Date.parse("2026-11-15T15:00:00Z");
+  const entry = (entry_id: string, order_id: string, debit_account: string, entry_date = "2026-11-14") => ({
+    entry_id,
+    order_id,
+    tx_signature: `tx-${entry_id}`,
+    entry_date,
+    debit_account,
+    credit_account: "USDC - agent wallet",
+    amount: 100000,
+    description: "d",
+  });
+  const d = data({
+    orders: [
+      order({ order_id: "b1", status: "booked", created_at: "2026-11-14T10:00:00Z" }),
+      order({ order_id: "b2", status: "booked", created_at: "2026-11-13T10:00:00Z" }),
+      order({ order_id: "old", status: "booked", created_at: "2026-11-02T10:00:00Z" }),
+      order({ order_id: "d1", status: "denied", created_at: "2026-11-14T09:00:00Z", deny_reason: "seller not approved" }),
+      order({ order_id: "d0", status: "denied", created_at: "2026-11-01T09:00:00Z", deny_reason: "seller not approved" }),
+    ],
+    exceptions: [
+      exception({ exception_id: "e-high", type: "nothing_delivered", severity: "high", created_at: "2026-11-14T12:00:00Z", status: "seller_blocked" }),
+      exception({ exception_id: "e-crit", type: "no_order", severity: "critical", created_at: "2026-11-13T12:00:00Z" }),
+      exception({ exception_id: "e-old", type: "wrong_data", severity: "medium", created_at: "2026-11-02T12:00:00Z" }),
+    ],
+    journal_entries: [
+      entry("j1", "b1", "Data purchases expense"),
+      entry("j2", "b2", "Data purchases expense", "2026-11-13"),
+      entry("j3", "old", "Data purchases expense", "2026-11-02"),
+      entry("j4", "x", "Loss on undelivered purchases"),
+    ],
+  });
+
+  it("counts this week's caught (open and resolved), blocked and booked, using the cards' numbers", () => {
+    const o = weekOutcomes(d, GATEWAY, now);
+    const w = weekStats(d, GATEWAY, now);
+    expect(o).toEqual({ caught: 2, topProblem: "no_order", blocked: 1, booked: 2, bookedAmount: 200000 });
+    expect([o.caught, o.blocked]).toEqual([w.caught, w.blocked]);
+  });
+
+  it("is all zeros on a quiet week", () => {
+    expect(weekOutcomes(data({}), GATEWAY, now)).toEqual({ caught: 0, topProblem: null, blocked: 0, booked: 0, bookedAmount: 0 });
+  });
+});
+
+describe("tile labels and notes", () => {
+  it("uses singular and plural labels", () => {
+    expect(outcomeLabel("caught", 1)).toBe("Problem caught");
+    expect(outcomeLabel("caught", 2)).toBe("Problems caught");
+    expect(outcomeLabel("caught", 0)).toBe("Problems caught");
+    expect(outcomeLabel("booked", 1)).toBe("Purchase booked");
+    expect(outcomeLabel("booked", 3)).toBe("Purchases booked");
+    expect(outcomeLabel("blocked", 1)).toBe("Blocked before paying");
+    expect(outcomeLabel("blocked", 6)).toBe("Blocked before paying");
+  });
+
+  it("names the most severe problem and how many more", () => {
+    expect(problemNote("no_order", 1)).toBe("Payment with no order");
+    expect(problemNote("no_order", 2)).toBe("Payment with no order + 1 more");
+    expect(problemNote(null, 0)).toBe("Nothing flagged");
+  });
+
+  it("says what the booked purchases added to Data purchases", () => {
+    expect(bookedNote(100000, 1)).toBe("$0.10 to Data purchases");
+    expect(bookedNote(0, 0)).toBe("Nothing booked yet");
   });
 });
 
@@ -184,13 +248,6 @@ describe("matchesStatus", () => {
     expect(matchesStatus({ ...paying, status: "paid" }, "processing")).toBe(true);
     expect(matchesStatus({ ...paying, status: "booked" }, "processing")).toBe(false);
     expect(matchesStatus(paying, "all")).toBe(true);
-  });
-});
-
-describe("auditHeadline", () => {
-  it("leads with what the auditor did", () => {
-    expect(auditHeadline({ caught: 1, blocked: 6, booked: 100000 })).toBe("Caught 1 problem this week · 6 orders blocked · $0.10 booked");
-    expect(auditHeadline({ caught: 0, blocked: 1, booked: 0 })).toBe("No problems caught this week · 1 order blocked · $0.00 booked");
   });
 });
 

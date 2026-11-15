@@ -6,9 +6,9 @@
 import { useMemo, useSyncExternalStore, type KeyboardEvent } from "react";
 import type { OrderRow } from "@/lib/db-types";
 import { computeOverview, explorerTxUrl, type DashboardData, type Rules } from "@/lib/dashboard/model";
-import { etClock, lastDecisionAt, nextUtcMidnight, recentActivity, weekStats, type ActivityRow } from "@/lib/dashboard/overview";
+import { etClock, lastDecisionAt, nextUtcMidnight, recentActivity, weekOutcomes, weekStats, type ActivityRow } from "@/lib/dashboard/overview";
 import { detectScenes, type Scene } from "@/lib/dashboard/scenes";
-import { auditHeadline, dollars, timeShort } from "@/lib/dashboard/words";
+import { bookedNote, dollars, outcomeLabel, problemNote, timeShort } from "@/lib/dashboard/words";
 import { Empty, fullTime, MatchChips, Stamp } from "./ui";
 
 interface Props {
@@ -34,6 +34,7 @@ export default function Overview({ data, rules, gatewayWallet, now, loading, liv
   const nowDate = useMemo(() => new Date(`${day}T12:00:00Z`), [day]);
   const today = useMemo(() => computeOverview(data, rules, gatewayWallet, nowDate), [data, rules, gatewayWallet, nowDate]);
   const week = useMemo(() => weekStats(data, gatewayWallet, now), [data, gatewayWallet, now]);
+  const outcomes = useMemo(() => weekOutcomes(data, gatewayWallet, now), [data, gatewayWallet, now]);
   const activity = useMemo(() => recentActivity(data, 8, now), [data, now]);
   const scenes = useMemo(() => detectScenes(data), [data]);
   const last = useMemo(() => lastDecisionAt(data), [data]);
@@ -44,36 +45,48 @@ export default function Overview({ data, rules, gatewayWallet, now, loading, liv
 
   return (
     <div className="ov">
-      <section className="card hero" aria-label="This week">
-        <div className="hero-status">
-          {loading ? (
-            <span className="skeleton" style={{ display: "block", width: 420, height: 30 }} />
-          ) : (
-            <h2 className="hero-title">{auditHeadline(week)}</h2>
-          )}
-          <p className="hero-lede">Checks every payment your AI agent makes: rules before it pays, the blockchain after, and what it actually received.</p>
-          <div className="hero-sub">
-            <span>{active ? "Agent active" : "Agent idle"}</span>
-            <span aria-hidden="true">·</span>
-            <span className={`live ${live === "live" ? "on" : live === "offline" ? "off" : ""}`}>
-              <span className="dot" />
-              {live === "live" ? "Live" : live === "offline" ? "Reconnecting…" : "Connecting…"}
-            </span>
-            <span aria-hidden="true">·</span>
-            <span>{loading ? "loading…" : last ? <>last decision <time dateTime={last} title={fullTime(last)}>{timeShort(last, now)}</time></> : "no decisions yet"}</span>
-          </div>
+      <section className="card hero" aria-labelledby="hero-h">
+        <h2 id="hero-h" className="hero-heading">This week, Agent Auditor…</h2>
+        <p className="hero-lede">Checks every payment your AI agent makes: rules before it pays, the blockchain after, and what it actually received.</p>
+        <div className="hero-sub">
+          <span>{active ? "Agent active" : "Agent idle"}</span>
+          <span aria-hidden="true">·</span>
+          <span className={`live ${live === "live" ? "on" : live === "offline" ? "off" : ""}`}>
+            <span className="dot" />
+            {live === "live" ? "Live" : live === "offline" ? "Reconnecting…" : "Connecting…"}
+          </span>
+          <span aria-hidden="true">·</span>
+          <span>{loading ? "loading…" : last ? <>last decision <time dateTime={last} title={fullTime(last)}>{timeShort(last, now)}</time></> : "no decisions yet"}</span>
         </div>
-        <div className="hero-spend">
-          <div className="hero-spend-label">Spent today</div>
-          <div className="hero-spend-value num">
-            {loading ? <span className="skeleton" style={{ display: "block", width: 110, height: 40 }} /> : dollars(today.spentToday)}
-          </div>
-          <div className={`meter ${meterClass}`} role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={today.dailyUsedPct} aria-label="Daily budget used">
-            <span style={{ width: `${Math.max(today.dailyUsedPct, today.spentToday > 0 ? 2 : 0)}%` }} />
-          </div>
-          <div className="hero-spend-cap num">
-            of {dollars(today.dailyLimit)} daily budget · resets at {etClock(nextUtcMidnight(now))} ET
-          </div>
+        {/* Three separate results, each a way into the page that holds the detail. */}
+        <div className="outcomes">
+          <Outcome
+            tone={outcomes.caught > 0 ? "flagged" : "quiet"}
+            value={outcomes.caught}
+            label={outcomeLabel("caught", outcomes.caught)}
+            note={problemNote(outcomes.topProblem, outcomes.caught)}
+            loading={loading}
+            onClick={() => onNavigate("exceptions")}
+            go="Open exceptions"
+          />
+          <Outcome
+            tone="blocked"
+            value={outcomes.blocked}
+            label={outcomeLabel("blocked", outcomes.blocked)}
+            note="No money moved"
+            loading={loading}
+            onClick={() => onNavigate("orders:denied")}
+            go="Show blocked orders"
+          />
+          <Outcome
+            tone={outcomes.booked > 0 ? "booked" : "quiet"}
+            value={outcomes.booked}
+            label={outcomeLabel("booked", outcomes.booked)}
+            note={bookedNote(outcomes.bookedAmount, outcomes.booked)}
+            loading={loading}
+            onClick={() => onNavigate("ledger")}
+            go="Open the ledger"
+          />
         </div>
       </section>
 
@@ -99,9 +112,16 @@ export default function Overview({ data, rules, gatewayWallet, now, loading, liv
           </div>
         </div>
         <div className="card stat">
-          <div className="stat-label">Blocked by rules</div>
-          <div className="stat-value num">{loading ? <span className="skeleton" style={{ display: "block", width: 50, height: 40 }} /> : week.blocked}</div>
-          <div className="stat-foot">This week · no money moved</div>
+          <div className="stat-label">Spent today</div>
+          <div className="stat-value num spend-value">
+            {loading ? <span className="skeleton" style={{ display: "block", width: 110, height: 40 }} /> : dollars(today.spentToday)}
+          </div>
+          <div className={`meter ${meterClass}`} role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={today.dailyUsedPct} aria-label="Daily budget used">
+            <span style={{ width: `${Math.max(today.dailyUsedPct, today.spentToday > 0 ? 2 : 0)}%` }} />
+          </div>
+          <div className="stat-foot num">
+            of {dollars(today.dailyLimit)} daily budget · resets at {etClock(nextUtcMidnight(now))} ET
+          </div>
         </div>
       </div>
 
@@ -159,6 +179,33 @@ export default function Overview({ data, rules, gatewayWallet, now, loading, liv
   );
 }
 
+/** One result tile: a big number in the matching stamp color, its label, and a one-line note. */
+function Outcome({
+  tone,
+  value,
+  label,
+  note,
+  loading,
+  onClick,
+  go,
+}: {
+  tone: "flagged" | "blocked" | "booked" | "quiet";
+  value: number;
+  label: string;
+  note: string;
+  loading: boolean;
+  onClick: () => void;
+  go: string;
+}) {
+  return (
+    <button className={`outcome outcome-${tone}`} onClick={onClick} title={go}>
+      <span className="outcome-value num">{loading ? <span className="skeleton" style={{ display: "block", width: 40, height: 40 }} /> : value}</span>
+      <span className="outcome-label">{label}</span>
+      <span className="outcome-note">{note}</span>
+    </button>
+  );
+}
+
 function ActivityLine({ row, now, fresh, onOpenOrder }: { row: ActivityRow; now: number; fresh: boolean; onOpenOrder: (order: OrderRow) => void }) {
   const open = () => row.order && onOpenOrder(row.order);
   const onKey = (e: KeyboardEvent<HTMLLIElement>) => {
@@ -177,7 +224,7 @@ function ActivityLine({ row, now, fresh, onOpenOrder }: { row: ActivityRow; now:
       tabIndex={row.order ? 0 : undefined}
       role={row.order ? "button" : undefined}
     >
-      <span className="act-text" title={row.note ?? undefined}>
+      <span className="act-text" title={row.note ?? row.text}>
         {row.text}
         {link && row.tx && (
           <a className="act-link" href={explorerTxUrl(row.tx)} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>
@@ -185,7 +232,13 @@ function ActivityLine({ row, now, fresh, onOpenOrder }: { row: ActivityRow; now:
           </a>
         )}
       </span>
-      <span className="act-match">{row.match && <MatchChips match={row.match} />}</span>
+      {/* A payment with no order has no match to show; its sentence uses the room instead. The columns
+          to the right have fixed widths, so amounts and stamps still line up. */}
+      {row.match && (
+        <span className="act-match">
+          <MatchChips match={row.match} />
+        </span>
+      )}
       <span className={`act-amount num${row.struck ? " struck" : ""}`} title={row.struck ? "Not spent: blocked before payment" : undefined}>
         {row.amount !== null ? dollars(row.amount) : ""}
       </span>

@@ -3,7 +3,7 @@
 // Times are shown in America/New_York; the $5 daily rule itself stays UTC in the gateway
 // (SPEC.md section 5), so the reset time is the next UTC midnight shown in ET.
 
-import type { ExceptionRow, ExceptionSeverity, OrderRow } from "../db-types";
+import type { ExceptionRow, ExceptionSeverity, ExceptionType, OrderRow } from "../db-types";
 import { orderTrail, outgoing, paymentTxByOrder, type DashboardData, type Rules, type TrailStep } from "./model";
 import { deliveryText, EXCEPTION_TITLE, exceptionSentence, orderSentence, readableSummary, reviewSentence, sellerName, unconfirmedSentence } from "./words";
 
@@ -173,18 +173,14 @@ export interface WeekStats {
   purchases: number;
   blocked: number;
   verified: number;
-  /** Exceptions raised this week: problems the auditor caught. */
+  /** Exceptions raised this week, open or resolved: problems the auditor caught. */
   caught: number;
-  /** Purchases booked to Data purchases expense this week. */
-  booked: number;
 }
 
 /** "This week" = since Monday 00:00 ET. Verified = paid or booked orders with a matched on-chain payment. */
 export function weekStats(data: DashboardData, gatewayWallet: string | null, now: number): WeekStats {
   const weekStart = weekStartEt(now);
   const inWeek = (iso: string) => Date.parse(iso) >= weekStart;
-  // entry_date is a calendar date; noon UTC is the same date in ET.
-  const dateInWeek = (date: string) => Date.parse(`${date}T12:00:00Z`) >= weekStart;
   const payments = outgoing(data.payments, gatewayWallet).filter((p) => inWeek(p.block_time));
   const txByOrder = paymentTxByOrder(data.payments);
   return {
@@ -195,8 +191,37 @@ export function weekStats(data: DashboardData, gatewayWallet: string | null, now
     blocked: data.orders.filter((o) => o.status === "denied" && inWeek(o.created_at)).length,
     verified: data.orders.filter((o) => (o.status === "paid" || o.status === "booked") && txByOrder.has(o.order_id)).length,
     caught: data.exceptions.filter((e) => inWeek(e.created_at)).length,
-    booked: data.journal_entries
-      .filter((j) => j.debit_account === "Data purchases expense" && dateInWeek(j.entry_date))
+  };
+}
+
+/** The three results at the top of the Overview: what the auditor caught, blocked and booked this week. */
+export interface WeekOutcomes {
+  /** Exceptions raised this week, open or resolved (same count as weekStats.caught). */
+  caught: number;
+  /** The most severe of them (newest first among equals), for the tile's one-line note. */
+  topProblem: ExceptionType | null;
+  /** Orders denied this week (same count as weekStats.blocked). */
+  blocked: number;
+  /** Orders created this week that are now booked. */
+  booked: number;
+  /** Their Data purchases expense entries, in base units. */
+  bookedAmount: number;
+}
+
+export function weekOutcomes(data: DashboardData, gatewayWallet: string | null, now: number): WeekOutcomes {
+  const week = weekStats(data, gatewayWallet, now);
+  const inWeek = (iso: string) => Date.parse(iso) >= week.weekStart;
+  const top = data.exceptions
+    .filter((e) => inWeek(e.created_at))
+    .sort((a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity] || b.created_at.localeCompare(a.created_at))[0];
+  const booked = new Set(data.orders.filter((o) => o.status === "booked" && inWeek(o.created_at)).map((o) => o.order_id));
+  return {
+    caught: week.caught,
+    topProblem: top?.type ?? null,
+    blocked: week.blocked,
+    booked: booked.size,
+    bookedAmount: data.journal_entries
+      .filter((j) => j.debit_account === "Data purchases expense" && j.order_id !== null && booked.has(j.order_id))
       .reduce((sum, j) => sum + j.amount, 0),
   };
 }
