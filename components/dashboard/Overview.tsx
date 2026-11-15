@@ -1,20 +1,23 @@
 "use client";
+// Overview (owner: Aidan): what needs a human first, then this week at a glance, today's budget,
+// and recent activity in plain English. Reads only the data Dashboard already loaded; every button
+// calls the same handlers as before (no new routes, no new writes).
 
-import { memo, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { useMemo, type KeyboardEvent, type ReactNode } from "react";
 import type { ExceptionRow, OrderRow } from "@/lib/db-types";
+import { computeOverview, explorerTxUrl, formatUsd, type DashboardData, type Rules } from "@/lib/dashboard/model";
 import {
-  computeOverview,
-  dailySpend,
-  formatUsd,
-  ORDER_STATUSES,
-  percent,
-  shortId,
-  type DashboardData,
-  type DayBucket,
-  type Rules,
-} from "@/lib/dashboard/model";
+  attentionItems,
+  etClock,
+  nextUtcMidnight,
+  recentActivity,
+  weekStats,
+  type ActivityKind,
+  type ActivityRow,
+  type AttentionItem,
+} from "@/lib/dashboard/overview";
 import { detectScenes, type Scene } from "@/lib/dashboard/scenes";
-import { Empty, Icon, ORDER_TONE_VAR, SeverityBadge, StatusBadge, timeAgo } from "./ui";
+import { Empty, fullTime, Icon, SeverityBadge, StatusBadge, timeAgo } from "./ui";
 
 interface Props {
   data: DashboardData;
@@ -30,60 +33,88 @@ interface Props {
   onScene: (scene: Scene) => void;
 }
 
-const tone = (v: string) => ({ "--kpi-tone": v }) as CSSProperties;
+const ACTIVITY_ICON: Record<ActivityKind, string> = {
+  paid: "check",
+  blocked: "ban",
+  exception: "exceptions",
+  pending: "pause",
+  paying: "clock",
+};
 
 export default function Overview({ data, rules, gatewayWallet, now, loading, fresh, onOpenOrder, onApprove, onException, onNavigate, onScene }: Props) {
-  // Day-level dates only change once a day; avoid recomputing on every 5 s clock tick.
+  // The daily limit is per UTC day (gateway rule); recompute only when the UTC day changes.
   const day = new Date(now).toISOString().slice(0, 10);
   const nowDate = useMemo(() => new Date(`${day}T12:00:00Z`), [day]);
-  const o = useMemo(() => computeOverview(data, rules, gatewayWallet, nowDate), [data, rules, gatewayWallet, nowDate]);
-  const spend = useMemo(() => dailySpend(data.payments, gatewayWallet, nowDate, 14), [data.payments, gatewayWallet, nowDate]);
+  const today = useMemo(() => computeOverview(data, rules, gatewayWallet, nowDate), [data, rules, gatewayWallet, nowDate]);
+  const week = useMemo(() => weekStats(data, gatewayWallet, now), [data, gatewayWallet, now]);
+  const attention = useMemo(() => attentionItems(data, rules), [data, rules]);
+  const activity = useMemo(() => recentActivity(data, 8), [data]);
   const scenes = useMemo(() => detectScenes(data), [data]);
-  const pending = data.orders.filter((x) => x.status === "pending_review");
-  const open = data.exceptions.filter((x) => x.status === "open");
-  const meterClass = o.dailyUsedPct >= 90 ? "crit" : o.dailyUsedPct >= 70 ? "warn" : "";
-  const largestOrder = data.orders.reduce((m, x) => Math.max(m, x.quote_amount ?? 0), 0);
-  const v = (x: ReactNode) => (loading ? <span className="skeleton" style={{ display: "block", width: 90, height: 26 }} /> : x);
+  const meterClass = today.dailyUsedPct >= 90 ? "crit" : today.dailyUsedPct >= 70 ? "warn" : "";
 
   return (
     <>
-      {!loading && data.orders.length === 0 && (
-        <div className="banner welcome">
-          <Icon name="bolt" />
-          <span>
-            <b style={{ color: "var(--text)" }}>Ready.</b> Run <code className="mono">demo/beat1.ts</code> to have the agent make its first purchase. Every decision will appear here live.
+      <section className="card" aria-labelledby="attn-h">
+        <div className="card-head">
+          <h2 id="attn-h">Needs your attention</h2>
+          {!loading && attention.length > 0 && <span className="hint">{attention.length} waiting</span>}
+        </div>
+        <div className="card-body">
+          {loading ? (
+            <div className="attn-list">
+              <div className="skeleton" style={{ height: 56, borderRadius: 10 }} />
+            </div>
+          ) : attention.length === 0 ? (
+            <AllClear />
+          ) : (
+            <ul className="attn-list">
+              {attention.map((item) => (
+                <AttentionRow key={item.key} item={item} now={now} fresh={fresh.has(item.key)} onOpenOrder={onOpenOrder} onApprove={onApprove} onException={onException} />
+              ))}
+            </ul>
+          )}
+        </div>
+      </section>
+
+      <div className="ov-stats">
+        <Stat label="This week" loading={loading} value={formatUsd(week.spent)} foot={`${week.purchases} purchase${week.purchases === 1 ? "" : "s"} · since Monday ET`} />
+        <Stat label="Rules blocked" loading={loading} value={String(week.blocked)} foot="This week · no money moved" />
+        <Stat label="Verified on chain" loading={loading} value={String(week.verified)} foot="Paid orders matched on Solana devnet" />
+      </div>
+
+      <div className="card budget" aria-label="Today's budget">
+        <span className="budget-label">Today&apos;s budget</span>
+        <div className={`meter ${meterClass}`} role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={today.dailyUsedPct} aria-label="Daily limit used">
+          <span style={{ width: `${Math.max(today.dailyUsedPct, today.spentToday > 0 ? 2 : 0)}%` }} />
+        </div>
+        <span className="budget-num num">
+          {formatUsd(today.spentToday)} of {formatUsd(today.dailyLimit)} · resets at {etClock(nextUtcMidnight(now))} ET
+        </span>
+      </div>
+
+      <section className="card" aria-labelledby="activity-h">
+        <div className="card-head">
+          <h2 id="activity-h">Recent activity</h2>
+          <span className="right">
+            <button className="linklike" onClick={() => onNavigate("orders")}>All orders</button>
           </span>
         </div>
-      )}
-
-      <div className="grid grid-kpi">
-        <div className="card kpi" style={tone("var(--accent)")}>
-          <div className="kpi-label"><Icon name="wallet" />Spent today · on-chain</div>
-          <div className="kpi-value">{v(formatUsd(o.spentToday))}</div>
-          <div className={`meter ${meterClass}`} role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={o.dailyUsedPct} aria-label="Daily limit used">
-            <span style={{ width: `${Math.max(o.dailyUsedPct, o.spentToday > 0 ? 2 : 0)}%` }} />
+        {loading ? (
+          <div className="card-body">
+            <div className="skeleton" style={{ height: 14, width: "70%" }} />
           </div>
-          <div className="kpi-foot">{o.dailyUsedPct}% of the {formatUsd(o.dailyLimit)} daily limit</div>
-        </div>
-        <div className="card kpi" style={tone("var(--good)")}>
-          <div className="kpi-label"><Icon name="book" />Orders</div>
-          <div className="kpi-value">{v(<>{o.totalOrders}<small>{o.ordersByStatus.booked} booked</small></>)}</div>
-          <div className="kpi-foot">{formatUsd(o.bookedAmount)} expensed to Data purchases</div>
-        </div>
-        <div className="card kpi" style={tone("var(--serious)")}>
-          <div className="kpi-label"><Icon name="shield" />Blocked before payment</div>
-          <div className="kpi-value">{v(o.blockedBeforePayment)}</div>
-          <div className="kpi-foot">Denied by a rule or the quote check. No money moved.</div>
-        </div>
-        <div className="card kpi" style={tone(o.openBySeverity.critical ? "var(--critical)" : "var(--warning)")}>
-          <div className="kpi-label"><Icon name="exceptions" />Open exceptions</div>
-          <div className="kpi-value" style={{ color: o.openBySeverity.critical ? "var(--critical)" : undefined }}>{v(o.openExceptions)}</div>
-          <div className="kpi-foot">
-            {o.openBySeverity.critical} critical · {o.openBySeverity.high} high · {o.openBySeverity.medium} medium
-            {o.unmatchedPayments > 0 && <span className="reason crit"> · {o.unmatchedPayments} unmatched payment{o.unmatchedPayments > 1 ? "s" : ""}</span>}
-          </div>
-        </div>
-      </div>
+        ) : activity.length === 0 ? (
+          <Empty title="No activity yet" icon="bolt">
+            Run <code className="mono">demo/beat1.ts</code> and the agent&apos;s first purchase shows up here live.
+          </Empty>
+        ) : (
+          <ul className="activity">
+            {activity.map((row) => (
+              <ActivityLine key={row.key} row={row} now={now} fresh={fresh.has(row.rowKey)} onOpenOrder={onOpenOrder} />
+            ))}
+          </ul>
+        )}
+      </section>
 
       <section className="card" aria-labelledby="scenes-h">
         <div className="card-head">
@@ -107,271 +138,117 @@ export default function Overview({ data, rules, gatewayWallet, now, loading, fre
           ))}
         </div>
       </section>
-
-      <div className="grid grid-2">
-        <section className="card" aria-labelledby="spend-h">
-          <div className="card-head">
-            <h2 id="spend-h">USDC paid out</h2>
-            <span className="hint">Per UTC day, last 14 days · source: QuickNode Streams</span>
-          </div>
-          <div className="card-body">
-            <SpendChart buckets={spend} />
-          </div>
-        </section>
-
-        <section className="card" aria-labelledby="outcome-h">
-          <div className="card-head">
-            <h2 id="outcome-h">Outcomes and limits</h2>
-            <span className="hint">{o.totalOrders} orders</span>
-          </div>
-          <div className="card-body">
-            {o.totalOrders === 0 ? (
-              <div className="stackbar" />
-            ) : (
-              <div className="stackbar" role="img" aria-label="Orders by status">
-                {ORDER_STATUSES.filter((s) => o.ordersByStatus[s] > 0).map((s) => (
-                  <span key={s} title={`${s}: ${o.ordersByStatus[s]}`} style={{ width: `${(o.ordersByStatus[s] / o.totalOrders) * 100}%`, background: ORDER_TONE_VAR[s] }} />
-                ))}
-              </div>
-            )}
-            <div className="legend">
-              {ORDER_STATUSES.map((s) => (
-                <button key={s} className="legend-item" onClick={() => onNavigate(`orders:${s}`)} title={`Show ${s} orders`}>
-                  <span className="dot" style={{ background: ORDER_TONE_VAR[s] }} />
-                  {s}
-                  <b>{o.ordersByStatus[s]}</b>
-                </button>
-              ))}
-            </div>
-            <div className="limits">
-              <Limit label="Daily limit" used={o.spentToday} cap={rules.max_per_day} note={`${formatUsd(o.spentToday)} of ${formatUsd(rules.max_per_day)}`} />
-              <Limit label="Per-purchase limit" used={largestOrder} cap={rules.max_per_purchase} note={`largest quote ${formatUsd(largestOrder)} of ${formatUsd(rules.max_per_purchase)}`} />
-              <div className="limit-row">
-                <span className="dim">Human review above</span>
-                <span className="num">{formatUsd(rules.human_review_over)}</span>
-              </div>
-            </div>
-          </div>
-        </section>
-      </div>
-
-      <div className="grid grid-2">
-        <section className="card" aria-labelledby="feed-h">
-          <div className="card-head">
-            <h2 id="feed-h">Live activity</h2>
-            <span className="hint">Orders, payments, deliveries and exceptions as they land</span>
-          </div>
-          <ActivityFeed data={data} now={now} fresh={fresh} onOpenOrder={onOpenOrder} />
-        </section>
-
-        <section className="card" aria-labelledby="attn-h">
-          <div className="card-head">
-            <h2 id="attn-h">Needs a human</h2>
-            <span className="hint">{pending.length + open.length} waiting</span>
-          </div>
-          {pending.length + open.length === 0 ? (
-            <Empty title="Nothing waiting" icon="check">Orders over {formatUsd(rules.human_review_over)} and exceptions land here.</Empty>
-          ) : (
-            <ul className="feed">
-              {open.slice(0, 5).map((e) => (
-                <li key={e.exception_id}>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
-                    <div className="what" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                      <SeverityBadge severity={e.severity} />
-                      <span className="mono">{e.type}</span>
-                    </div>
-                    <div className="cell-sub">{e.summary ?? (e.order_id ? `Order ${shortId(e.order_id)}` : "Payment with no order")}</div>
-                  </div>
-                  <div style={{ marginLeft: "auto", display: "flex", gap: 6, alignItems: "center" }}>
-                    {e.type === "no_order" ? (
-                      <button className="btn btn-sm btn-ghost" onClick={() => onNavigate("exceptions")}>Investigate</button>
-                    ) : (
-                      <>
-                        <button className="btn btn-sm" onClick={() => onException(e, "approve")}>Approve</button>
-                        <button className="btn btn-sm btn-danger" onClick={() => onException(e, "block_seller")}>Block seller</button>
-                      </>
-                    )}
-                  </div>
-                </li>
-              ))}
-              {pending.slice(0, 5).map((p) => (
-                <li key={p.order_id}>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
-                    <div className="what" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                      <StatusBadge status={p.status} />
-                      <span>{p.seller_id} · <b className="num">{formatUsd(p.max_amount)}</b></span>
-                    </div>
-                    <div className="cell-sub">{p.purpose}</div>
-                  </div>
-                  <div style={{ marginLeft: "auto", display: "flex", gap: 6, alignItems: "center" }}>
-                    <button className="btn btn-sm btn-ghost" onClick={() => onOpenOrder(p)}>Details</button>
-                    <button className="btn btn-sm btn-primary" onClick={() => onApprove(p)}>Approve</button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      </div>
     </>
   );
 }
 
-function Limit({ label, used, cap, note }: { label: string; used: number; cap: number; note: string }) {
-  const pct = percent(used, cap);
+function AllClear() {
   return (
-    <div className="limit-row">
-      <span className="dim">{label}</span>
-      <span className="num dim">{note}</span>
-      <div className={`meter ${pct >= 90 ? "crit" : pct >= 70 ? "warn" : ""}`} role="meter" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
-        <span style={{ width: `${Math.max(pct, used > 0 ? 2 : 0)}%` }} />
-      </div>
+    <div className="allclear">
+      <span className="allclear-glyph">
+        <Icon name="check" />
+      </span>
+      <strong>All clear</strong>
+      <span>Nothing needs you right now. Your agent is working inside its rules.</span>
     </div>
   );
 }
 
-const SpendChart = memo(function SpendChart({ buckets }: { buckets: DayBucket[] }) {
-  const [hover, setHover] = useState<number | null>(null);
-  const W = 640;
-  const H = 190;
-  const pad = { l: 46, r: 8, t: 12, b: 24 };
-  const max = Math.max(...buckets.map((b) => b.amount), 100000);
-  const steps = [100000, 250000, 500000, 1000000, 2500000, 5000000, 10000000, 25000000, 50000000];
-  const top = steps.find((s) => s >= max) ?? max;
-  const plotW = W - pad.l - pad.r;
-  const plotH = H - pad.t - pad.b;
-  const slot = plotW / buckets.length;
-  const barW = Math.max(4, slot - 8);
-  const y = (val: number) => pad.t + plotH - (val / top) * plotH;
-  const total = buckets.reduce((s, b) => s + b.amount, 0);
-  const h = hover !== null ? buckets[hover] : null;
-
+function Stat({ label, value, foot, loading }: { label: string; value: ReactNode; foot: string; loading: boolean }) {
   return (
-    <div className="chart">
-      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label={`USDC paid out per day, ${formatUsd(total)} over ${buckets.length} days`} onMouseLeave={() => setHover(null)}>
-        <defs>
-          <linearGradient id="bar" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0" stopColor="#67e8f9" />
-            <stop offset="1" stopColor="#0891b2" />
-          </linearGradient>
-        </defs>
-        {[0, 0.5, 1].map((f) => (
-          <g key={f}>
-            <line x1={pad.l} x2={W - pad.r} y1={y(top * f)} y2={y(top * f)} stroke="var(--grid)" strokeWidth={1} strokeDasharray={f === 0 ? undefined : "3 4"} />
-            <text x={pad.l - 8} y={y(top * f) + 4} textAnchor="end" fontSize={10.5} fill="var(--muted)">{formatUsd(Math.round(top * f))}</text>
-          </g>
-        ))}
-        {buckets.map((b, i) => {
-          const x = pad.l + i * slot + (slot - barW) / 2;
-          const bh = b.amount > 0 ? Math.max(2, plotH - (y(b.amount) - pad.t)) : 0;
-          const r = Math.min(4, barW / 2, bh);
-          const yTop = pad.t + plotH - bh;
-          return (
-            <g key={b.day}>
-              <rect x={pad.l + i * slot} y={pad.t} width={slot} height={plotH} rx={4} fill={hover === i ? "rgba(34,211,238,.06)" : "transparent"} onMouseEnter={() => setHover(i)} />
-              {bh > 0 ? (
-                <path d={`M${x},${yTop + bh} V${yTop + r} Q${x},${yTop} ${x + r},${yTop} H${x + barW - r} Q${x + barW},${yTop} ${x + barW},${yTop + r} V${yTop + bh} Z`} fill="url(#bar)" opacity={hover === null || hover === i ? 1 : 0.5} pointerEvents="none" />
-              ) : (
-                <rect x={x} y={pad.t + plotH - 1} width={barW} height={1} fill="var(--grid)" pointerEvents="none" />
-              )}
-              {(i === 0 || i === buckets.length - 1 || i % 3 === 0) && (
-                <text x={pad.l + i * slot + slot / 2} y={H - 6} textAnchor="middle" fontSize={10.5} fill="var(--muted)">{b.day.slice(5)}</text>
-              )}
-            </g>
-          );
-        })}
-      </svg>
-      {h && hover !== null && (
-        <div className="tip" style={{ left: `${((pad.l + hover * slot + slot / 2) / W) * 100}%`, top: `${(y(h.amount) / H) * 100}%` }}>
-          <div className="muted">{h.day}</div>
-          <b className="num">{formatUsd(h.amount)}</b> · {h.count} payment{h.count === 1 ? "" : "s"}
+    <div className="card stat">
+      <div className="stat-label">{label}</div>
+      <div className="stat-value num">{loading ? <span className="skeleton" style={{ display: "block", width: 80, height: 24 }} /> : value}</div>
+      <div className="stat-foot">{foot}</div>
+    </div>
+  );
+}
+
+function AttentionRow({
+  item,
+  now,
+  fresh,
+  onOpenOrder,
+  onApprove,
+  onException,
+}: {
+  item: AttentionItem;
+  now: number;
+  fresh: boolean;
+  onOpenOrder: (order: OrderRow) => void;
+  onApprove: (order: OrderRow) => void;
+  onException: (exc: ExceptionRow, action: "approve" | "block_seller") => void;
+}) {
+  const critical = item.kind === "exception" && item.exception.severity === "critical";
+  return (
+    <li className={`attn-item${critical ? " crit" : ""}${fresh ? " fresh" : ""}`}>
+      <span className={`attn-ico ${item.kind === "pending" ? "review" : critical ? "crit" : "warn"}`}>
+        <Icon name={item.kind === "pending" ? "pause" : "exceptions"} />
+      </span>
+      <div className="attn-main">
+        <div className="attn-text">{item.text}</div>
+        <div className="attn-meta">
+          {item.kind === "exception" ? <SeverityBadge severity={item.exception.severity} /> : <StatusBadge status="pending_review" />}
+          <time dateTime={item.at} title={fullTime(item.at)}>{timeAgo(item.at, now)}</time>
+          {item.kind === "pending" && item.note && <span className="attn-note">{item.note}</span>}
         </div>
-      )}
-      {total === 0 && <div className="cell-sub" style={{ marginTop: 6 }}>No payments matched from the chain yet. They appear once the Streams webhook delivers them.</div>}
-    </div>
+      </div>
+      <div className="attn-actions">
+        {item.kind === "pending" ? (
+          <>
+            <button className="btn btn-sm btn-primary" onClick={() => onApprove(item.order)}>Approve</button>
+            <button className="btn btn-sm btn-ghost" onClick={() => onOpenOrder(item.order)}>View details</button>
+          </>
+        ) : item.exception.type === "no_order" ? (
+          // A stolen-key payment has no order to open; its evidence is the transaction itself.
+          item.exception.tx_signature ? (
+            <a className="btn btn-sm" href={explorerTxUrl(item.exception.tx_signature)} target="_blank" rel="noreferrer">
+              View on chain <Icon name="external" />
+            </a>
+          ) : (
+            <button className="btn btn-sm" disabled>View on chain</button>
+          )
+        ) : (
+          <>
+            <button className="btn btn-sm" onClick={() => onException(item.exception, "approve")}>Approve</button>
+            <button className="btn btn-sm btn-danger" onClick={() => onException(item.exception, "block_seller")}>Block seller</button>
+          </>
+        )}
+      </div>
+    </li>
   );
-});
-
-interface FeedItem {
-  at: string;
-  key: string;
-  rowKey: string;
-  icon: string;
-  tone: string;
-  text: ReactNode;
-  order?: OrderRow;
 }
 
-const ActivityFeed = memo(function ActivityFeed({ data, now, fresh, onOpenOrder }: { data: DashboardData; now: number; fresh: Set<string>; onOpenOrder: (o: OrderRow) => void }) {
-  const items = useMemo(() => {
-    const byId = new Map(data.orders.map((o) => [o.order_id, o]));
-    const list: FeedItem[] = [];
-    for (const o of data.orders) {
-      list.push({
-        at: o.created_at,
-        key: `o-${o.order_id}`,
-        rowKey: o.order_id,
-        icon: o.status === "denied" ? "ban" : o.status === "booked" ? "book" : "orders",
-        tone: o.status === "denied" ? "warn" : o.status === "booked" ? "good" : o.status === "exception" ? "bad" : "",
-        order: o,
-        text: (
-          <>
-            Order to <b>{o.seller_id}</b> for {formatUsd(o.max_amount)} <StatusBadge status={o.status} />
-            {o.deny_reason && <span className="reason"> {o.deny_reason}</span>}
-          </>
-        ),
-      });
+function ActivityLine({ row, now, fresh, onOpenOrder }: { row: ActivityRow; now: number; fresh: boolean; onOpenOrder: (order: OrderRow) => void }) {
+  const open = () => row.order && onOpenOrder(row.order);
+  const onKey = (e: KeyboardEvent<HTMLLIElement>) => {
+    if (row.order && (e.key === "Enter" || e.key === " ")) {
+      e.preventDefault();
+      open();
     }
-    for (const p of data.payments) {
-      list.push({
-        at: p.block_time,
-        key: `p-${p.tx_signature}`,
-        rowKey: p.tx_signature,
-        icon: "chain",
-        tone: p.order_id ? "chain" : "bad",
-        order: p.order_id ? byId.get(p.order_id) : undefined,
-        text: p.order_id ? (
-          <>On-chain payment {formatUsd(p.amount)} matched to <span className="mono">{shortId(p.order_id)}</span> by memo</>
-        ) : (
-          <span className="reason crit">On-chain payment {formatUsd(p.amount)} with no matching order</span>
-        ),
-      });
-    }
-    for (const d of data.deliveries) {
-      list.push({
-        at: d.received_at,
-        key: `d-${d.order_id}`,
-        rowKey: d.order_id,
-        icon: d.passed ? "check" : "x",
-        tone: d.passed ? "good" : "bad",
-        order: byId.get(d.order_id),
-        text: <>Delivery {d.passed ? "passed all three checks" : <span className="reason">failed a check</span>} for <span className="mono">{shortId(d.order_id)}</span></>,
-      });
-    }
-    for (const e of data.exceptions) {
-      list.push({
-        at: e.created_at,
-        key: `e-${e.exception_id}`,
-        rowKey: e.exception_id,
-        icon: "exceptions",
-        tone: "bad",
-        order: e.order_id ? byId.get(e.order_id) : undefined,
-        text: <>Exception <span className="mono">{e.type}</span> <SeverityBadge severity={e.severity} /></>,
-      });
-    }
-    return list.sort((a, b) => b.at.localeCompare(a.at)).slice(0, 12);
-  }, [data]);
-
-  if (items.length === 0) return <Empty title="Quiet so far" icon="bolt">Activity streams in here the moment it happens.</Empty>;
+  };
+  const tone = row.kind === "exception" ? (row.critical ? "crit" : "warn") : row.kind;
+  const showTx = row.tx && (row.kind === "paid" || (row.kind === "exception" && !row.order));
   return (
-    <ul className="feed">
-      {items.map((it) => (
-        <li key={it.key} className={`${it.order ? "clickable" : ""}${fresh.has(it.rowKey) ? " fresh" : ""}`} onClick={() => it.order && onOpenOrder(it.order)}>
-          <span className={`ico ${it.tone}`}><Icon name={it.icon} /></span>
-          <span className="what">{it.text}</span>
-          <span className="when" title={it.at}>{timeAgo(it.at, now)}</span>
-        </li>
-      ))}
-    </ul>
+    <li
+      className={`${row.order ? "clickable" : ""}${fresh ? " fresh" : ""}`}
+      onClick={open}
+      onKeyDown={onKey}
+      tabIndex={row.order ? 0 : undefined}
+      role={row.order ? "button" : undefined}
+    >
+      <span className={`act-ico ${tone}`}>
+        <Icon name={ACTIVITY_ICON[row.kind]} />
+      </span>
+      <span className="act-text">
+        {row.text}
+        {showTx && row.tx && (
+          <a className="act-link" href={explorerTxUrl(row.tx)} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>
+            {row.kind === "paid" ? "verified on chain →" : "view on chain →"}
+          </a>
+        )}
+      </span>
+      <time className="act-when" dateTime={row.at} title={fullTime(row.at)}>{timeAgo(row.at, now)}</time>
+    </li>
   );
-});
+}

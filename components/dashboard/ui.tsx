@@ -32,6 +32,7 @@ const paths: Record<string, ReactNode> = {
   user: <path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0" />,
   wallet: <path d="M4 7h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a1 1 0 0 1-1-1zM4 7l11-3v3M16 13h1" />,
   layers: <path d="M12 3 3 8l9 5 9-5-9-5zM3 13l9 5 9-5M3 17.5l9 5 9-5" />,
+  pause: <path d="M9 6v12M15 6v12" />,
 };
 
 export function Icon({ name, className }: { name: keyof typeof paths | string; className?: string }) {
@@ -42,24 +43,26 @@ export function Icon({ name, className }: { name: keyof typeof paths | string; c
   );
 }
 
+// Red (critical) is reserved for critical severity only. A denied order is the control working
+// ("blocked before payment"), so it is neutral, not an alarm.
 const ORDER_TONE: Record<OrderStatus, string> = {
   booked: "good",
   paid: "info",
   paying: "warning",
   pending_review: "review",
-  denied: "serious",
-  exception: "critical",
+  denied: "neutral",
+  exception: "serious",
 };
 const SEVERITY_TONE: Record<ExceptionSeverity, string> = { critical: "critical", high: "serious", medium: "warning" };
-const EXC_STATUS_TONE: Record<ExceptionStatus, string> = { open: "warning", approved: "good", seller_blocked: "critical" };
+const EXC_STATUS_TONE: Record<ExceptionStatus, string> = { open: "warning", approved: "good", seller_blocked: "serious" };
 
 export const ORDER_TONE_VAR: Record<OrderStatus, string> = {
   booked: "var(--good)",
   paid: "var(--info)",
   paying: "var(--warning)",
   pending_review: "var(--review)",
-  denied: "var(--serious)",
-  exception: "var(--critical)",
+  denied: "var(--muted)",
+  exception: "var(--serious)",
 };
 
 function Badge({ tone, children }: { tone: string; children: ReactNode }) {
@@ -75,7 +78,7 @@ export const StatusBadge = ({ status }: { status: OrderStatus }) => <Badge tone=
 export const SeverityBadge = ({ severity }: { severity: ExceptionSeverity }) => <Badge tone={SEVERITY_TONE[severity]}>{severity}</Badge>;
 export const ExceptionStatusBadge = ({ status }: { status: ExceptionStatus }) => <Badge tone={EXC_STATUS_TONE[status]}>{status}</Badge>;
 export const SellerStatusBadge = ({ status }: { status: SellerStatus }) => (
-  <Badge tone={status === "approved" ? "good" : "critical"}>{status}</Badge>
+  <Badge tone={status === "approved" ? "good" : "serious"}>{status}</Badge>
 );
 
 export function TxLink({ sig }: { sig: string | null }) {
@@ -105,8 +108,9 @@ export function timeAgo(iso: string | null, now: number): string {
   return `${Math.floor(s / 86400)}d ago`;
 }
 
+/** Full timestamp in America/New_York, the dashboard's display time zone. */
 export function fullTime(iso: string | null): string {
-  return iso ? new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "medium" }) : "—";
+  return iso ? `${new Date(iso).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "medium", timeZone: "America/New_York" })} ET` : "—";
 }
 
 export function Empty({ title, children, icon = "layers" }: { title: string; children?: ReactNode; icon?: string }) {
