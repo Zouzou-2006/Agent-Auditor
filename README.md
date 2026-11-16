@@ -89,8 +89,8 @@ What's on `main` today:
 | Supabase schema: six tables, read-only browser access, realtime | Working |
 | Dashboard: live updates, four-scene tracker, AI one-line summaries, read-only copilot | Working |
 | Vercel deployment | Working (URL shared with judges) |
-| CheapData seller (beat 2) | In progress |
-| SketchyNews preview page | In progress |
+| CheapData seller (beat 2) | Built, merged (beat 2 not yet run live) |
+| SketchyNews preview page (`/api/sellers/sketchynews`) | Built |
 
 ### Verified live on devnet (Nov 13)
 
@@ -107,7 +107,7 @@ Each beat is a script in `demo/` that can be rerun for the video.
 
 1. **Clean purchase:** the agent buys a SOL price quote from DataCo, and the payment is matched and booked as a journal entry. *Verified live on devnet.*
 2. **Empty delivery:** CheapData takes the payment and returns nothing, so a `nothing_delivered` exception appears. A human clicks Block Seller, and the agent's next CheapData order is denied: "seller blocked." *The script is on `main`; the CheapData seller is in progress.*
-3. **Prompt injection:** an order to pay `premiumreports`, a seller that isn't approved, is denied before payment: "seller not approved." No money moves. *Verified live on devnet.* The script files the order directly, so the demo doesn't depend on whether a recent Claude model falls for the injection. *The SketchyNews page is in progress.*
+3. **Prompt injection:** an order to pay `premiumreports`, a seller that isn't approved, is denied before payment: "seller not approved." No money moves. *Verified live on devnet.* The script files the order directly, so the demo doesn't depend on whether a recent Claude model falls for the injection. The SketchyNews preview page (`/api/sellers/sketchynews`) shows the hidden injection.
 4. **Stolen key:** a script pays the attacker straight from the wallet, skipping the gateway, and a critical `no_order` exception appears within seconds. *Verified live on devnet (about 1 s after the block).*
 
 ## Why Solana
