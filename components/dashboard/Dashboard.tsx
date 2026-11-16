@@ -8,7 +8,10 @@ import type { ExceptionRow, OrderRow, OrderStatus } from "@/lib/db-types";
 import { getBrowserClient } from "@/lib/db-browser";
 import { loadDashboardData } from "@/lib/dashboard/load";
 import { EMPTY_DATA, formatUsd, ORDER_STATUSES, shortId, type DashboardData, type OrderFilter, type Rules } from "@/lib/dashboard/model";
+import { attentionItems, attentionLevel, lastDecisionAt } from "@/lib/dashboard/overview";
 import type { Scene } from "@/lib/dashboard/scenes";
+import { itemLabel, networkLabel, sellerName, statusLabel } from "@/lib/dashboard/words";
+import AttentionDrawer from "./AttentionDrawer";
 import CommandPalette, { type PaletteAction } from "./CommandPalette";
 import Controls from "./Controls";
 import Copilot from "./Copilot";
@@ -17,7 +20,7 @@ import Ledger from "./Ledger";
 import OrderDrawer from "./OrderDrawer";
 import Orders from "./Orders";
 import Overview from "./Overview";
-import { ConfirmDialog, Icon, timeAgo, type ConfirmRequest } from "./ui";
+import { AgentStatus, ConfirmDialog, Icon, timeAgo, useModKey, type ConfirmRequest } from "./ui";
 
 const TABLES = ["sellers", "orders", "payments", "deliveries", "journal_entries", "exceptions"] as const;
 const SECTIONS = [
@@ -36,10 +39,38 @@ interface Toast {
 }
 
 const DEVNET_RPC = "https://api.devnet.solana.com"; // public devnet RPC, read-only balance lookup
+const AUTO_OPEN_KEY = "agent-auditor.attention.auto-opened";
+
+/** True the first time it's called in this browser session; false after that, including after a reload. */
+function claimAutoOpen(memory: { current: boolean }): boolean {
+  if (memory.current) return false;
+  memory.current = true;
+  try {
+    if (sessionStorage.getItem(AUTO_OPEN_KEY)) return false;
+    sessionStorage.setItem(AUTO_OPEN_KEY, "1");
+  } catch {
+    // Storage blocked (private mode): the in-memory flag above still limits it to once per page.
+  }
+  return true;
+}
+
+function withoutKey(record: Record<string, string>, key: string): Record<string, string> {
+  const next = { ...record };
+  delete next[key];
+  return next;
+}
+
+function isTyping(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
+}
 
 function rowKeys(d: DashboardData): Set<string> {
   return new Set([
     ...d.orders.map((o) => `${o.order_id}`),
+    // A status change is "fresh" too, so the Overview's result stamp can animate in when it flips.
+    ...d.orders.map((o) => `status:${o.order_id}:${o.status}`),
+    ...d.exceptions.map((e) => `status:${e.exception_id}:${e.status}`),
     ...d.payments.map((p) => p.tx_signature),
     ...d.exceptions.map((e) => e.exception_id),
     ...d.journal_entries.map((j) => j.entry_id),
@@ -48,6 +79,7 @@ function rowKeys(d: DashboardData): Set<string> {
 }
 
 export default function Dashboard({ rules, gatewayWallet }: { rules: Rules; gatewayWallet: string | null }) {
+  const mod = useModKey();
   const [data, setData] = useState<DashboardData>(EMPTY_DATA);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -65,7 +97,14 @@ export default function Dashboard({ rules, gatewayWallet }: { rules: Rules; gate
   const [unseen, setUnseen] = useState(false);
   const [palette, setPalette] = useState(false);
   const [balance, setBalance] = useState<number | null>(null);
+  const [attnOpen, setAttnOpen] = useState(false);
+  /** The item a "Review" button asked the needs-you drawer to highlight, or null. */
+  const [attnFocus, setAttnFocus] = useState<string | null>(null);
+  const [inFlight, setInFlight] = useState<Set<string>>(new Set());
+  const [actionErrors, setActionErrors] = useState<Record<string, string>>({});
   const known = useRef<Set<string> | null>(null);
+  const knownCritical = useRef<Set<string> | null>(null);
+  const autoOpened = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const copilotOpen = useRef(false);
   useEffect(() => {
@@ -91,6 +130,20 @@ export default function Dashboard({ rules, gatewayWallet }: { rules: Rules; gate
         }
       }
       known.current = keys;
+      // Auto-open "needs you" once per session, the first time a NEW critical exception appears.
+      // The first load only records what already exists, so a reload never opens it.
+      const critical = next.exceptions.filter((e) => e.status === "open" && e.severity === "critical").map((e) => e.exception_id);
+      if (knownCritical.current === null) {
+        knownCritical.current = new Set(critical);
+      } else {
+        const seen = knownCritical.current;
+        const isNew = critical.some((id) => !seen.has(id));
+        for (const id of critical) seen.add(id);
+        if (isNew && claimAutoOpen(autoOpened)) {
+          setAttnFocus(null);
+          setAttnOpen(true);
+        }
+      }
       setData(next);
       setError(null);
       setUpdatedAt(Date.now());
@@ -177,6 +230,10 @@ export default function Dashboard({ rules, gatewayWallet }: { rules: Rules; gate
         e.preventDefault();
         setUnseen(false);
         setCopilot((c) => ({ ...c, open: !c.open, seed: undefined }));
+      } else if (!mod && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "n" && !isTyping(e.target)) {
+        e.preventDefault();
+        setAttnFocus(null);
+        setAttnOpen((open) => !open);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -209,6 +266,26 @@ export default function Dashboard({ rules, gatewayWallet }: { rules: Rules; gate
     return { ok: res.ok, status: res.status, json };
   }, []);
 
+  // Marks a request in flight for one order/exception (so its buttons disable) and keeps the
+  // server's error text for it, shown inline in the "needs you" drawer.
+  const track = useCallback(async (key: string, run: () => Promise<string | null>) => {
+    setInFlight((s) => new Set(s).add(key));
+    setActionErrors((e) => withoutKey(e, key));
+    try {
+      const error = await run();
+      if (error) setActionErrors((e) => ({ ...e, [key]: error }));
+    } catch (err) {
+      setActionErrors((e) => ({ ...e, [key]: "Request failed: is the server running?" }));
+      throw err;
+    } finally {
+      setInFlight((s) => {
+        const next = new Set(s);
+        next.delete(key);
+        return next;
+      });
+    }
+  }, []);
+
   const approveOrder = useCallback(
     (order: OrderRow) =>
       setConfirm({
@@ -216,17 +293,23 @@ export default function Dashboard({ rules, gatewayWallet }: { rules: Rules; gate
         confirmLabel: `Approve and pay up to ${formatUsd(order.max_amount)}`,
         body: (
           <>
-            <p>{order.seller_id} · {order.item} · max {formatUsd(order.max_amount)}</p>
-            <p style={{ marginTop: 8 }}>The gateway re-checks the rules, asks the seller for a quote and pays it in USDC on devnet. This can take up to about 20 seconds.</p>
+            <p>{sellerName(order.seller_id, data.sellers)} · {itemLabel(order)} · max {formatUsd(order.max_amount)}</p>
+            <p style={{ marginTop: 8 }}>The gateway re-checks the rules, asks the seller for a quote and pays it in USDC on Solana. This can take up to about 20 seconds.</p>
           </>
         ),
-        run: async () => {
-          const r = await post(`/api/orders/${order.order_id}/approve`, {});
-          if (r.ok) toast(`Order ${shortId(order.order_id)}: ${String(r.json.status)}${r.json.reason ? ` · ${String(r.json.reason)}` : ""}`, r.json.status === "denied");
-          else toast(`Approve failed (${r.status}): ${String(r.json.error ?? "error")}`, true);
-        },
+        run: () =>
+          track(order.order_id, async () => {
+            const r = await post(`/api/orders/${order.order_id}/approve`, {});
+            if (r.ok) {
+              toast(`Order ${shortId(order.order_id)}: ${statusLabel(String(r.json.status))}${r.json.reason ? ` · ${String(r.json.reason)}` : ""}`, r.json.status === "denied");
+              return null;
+            }
+            const error = `Approve failed: ${String(r.json.error ?? "error")}`;
+            toast(error, true);
+            return error;
+          }),
       }),
-    [post, toast],
+    [data.sellers, post, toast, track],
   );
 
   const exceptionAction = useCallback(
@@ -241,20 +324,26 @@ export default function Dashboard({ rules, gatewayWallet }: { rules: Rules; gate
           ) : (
             <p>Blocks the seller, so its next order is denied with “seller blocked”, and books the loss: debit Loss on undelivered purchases, credit USDC - agent wallet.</p>
           ),
-        run: async () => {
-          const r = await post(`/api/exceptions/${exc.exception_id}`, { action });
-          if (r.ok) toast(action === "approve" ? "Exception approved and booked" : "Seller blocked and loss booked");
-          else toast(`Action failed (${r.status}): ${String(r.json.error ?? "error")}`, true);
-        },
+        run: () =>
+          track(exc.exception_id, async () => {
+            const r = await post(`/api/exceptions/${exc.exception_id}`, { action });
+            if (r.ok) {
+              toast(action === "approve" ? "Exception approved and booked" : "Seller blocked and loss booked");
+              return null;
+            }
+            const error = `Action failed: ${String(r.json.error ?? "error")}`;
+            toast(error, true);
+            return error;
+          }),
       }),
-    [post, toast],
+    [post, toast, track],
   );
 
   const summarize = useCallback(
     async (order?: OrderRow) => {
       try {
         const r = await post("/api/summaries", order ? { order_id: order.order_id } : {});
-        if (!r.ok) toast(`Summaries failed (${r.status}): ${String(r.json.error ?? "error")}`, true);
+        if (!r.ok) toast(`Summaries failed: ${String(r.json.error ?? "error")}`, true);
         else {
           const n = Number(r.json.orders ?? 0) + Number(r.json.exceptions ?? 0);
           toast(n ? `Wrote ${n} AI summar${n === 1 ? "y" : "ies"}` : "Nothing new to summarize");
@@ -326,6 +415,18 @@ export default function Dashboard({ rules, gatewayWallet }: { rules: Rules; gate
     }),
     [data.orders, openExceptions],
   );
+  const attention = useMemo(() => attentionItems(data, rules), [data, rules]);
+  const attnLevel = attentionLevel(attention);
+  const closeAttention = useCallback(() => {
+    setAttnOpen(false);
+    setAttnFocus(null);
+  }, []);
+  /** Opens the needs-you drawer; with a key (an exception or order id), that item is highlighted. */
+  const openAttention = useCallback((key: string | null) => {
+    setAttnFocus(key);
+    setAttnOpen(true);
+  }, []);
+  const lastDecision = useMemo(() => lastDecisionAt(data), [data]);
   const title = SECTIONS.find((s) => s.id === section)?.label ?? "Overview";
   const liveState: Live = error && live !== "live" ? "offline" : live;
   const copilotContext = useMemo(() => ({ section, order: drawer }), [section, drawer]);
@@ -337,7 +438,7 @@ export default function Dashboard({ rules, gatewayWallet }: { rules: Rules; gate
           <div className="brand-mark">AA</div>
           <div>
             <div className="brand-name">Agent Auditor</div>
-            <div className="brand-sub">Controls for AI spend · devnet</div>
+            <div className="brand-sub" title={`${networkLabel(rules.network)}: ${rules.network}`}>Controls for AI spend</div>
           </div>
         </div>
         <div>
@@ -353,29 +454,44 @@ export default function Dashboard({ rules, gatewayWallet }: { rules: Rules; gate
           </nav>
         </div>
         <div className="sidebar-foot">
-          <span className={`live ${liveState === "live" ? "on" : liveState === "offline" ? "off" : ""}`}>
+          <span
+            className={`live ${liveState === "live" ? "on" : liveState === "offline" ? "off" : ""}`}
+            title={`${liveState === "offline" ? "Realtime dropped; checking every 15 s" : "Realtime updates"} · updated ${updatedAt ? timeAgo(new Date(updatedAt).toISOString(), now) : "—"}`}
+          >
             <span className="dot" />
-            {liveState === "live" ? "Live · realtime" : liveState === "offline" ? "Polling every 15 s" : "Connecting…"}
+            {liveState === "live" ? "Live" : "Reconnecting…"}
           </span>
-          <span>Updated {updatedAt ? timeAgo(new Date(updatedAt).toISOString(), now) : "—"}</span>
-          <span className="kbd-hint">Command menu <kbd>Ctrl K</kbd></span>
-          <span className="kbd-hint">Copilot <kbd>Ctrl /</kbd></span>
         </div>
       </aside>
 
       <div className="main">
-        <header className="topbar">
+        {/* Every page shows its title. The Overview adds what Agent Auditor does (a full-width second
+            row, so it stays on one line) and the agent's status pill. */}
+        <header className={`topbar${section === "overview" ? " has-sub" : ""}`}>
           <h1>{title}</h1>
-          <span className="crumb hide-sm">· Agent Auditor</span>
-          <span className="spacer" />
-          <button className="palette-trigger" onClick={() => setPalette(true)} aria-label="Open command menu">
-            <Icon name="search" />
-            <span className="label">Jump to order, exception…</span>
-            <kbd>Ctrl K</kbd>
-          </button>
-          <button className="btn btn-ghost btn-sm" onClick={() => void refresh()} aria-label="Refresh">
-            <Icon name="refresh" />
-          </button>
+          {section === "overview" && (
+            <p className="topbar-sub">Checks every payment your AI agent makes: rules before it pays, the blockchain after, and what it actually received.</p>
+          )}
+          <div className="topbar-actions">
+            {section === "overview" && <AgentStatus live={liveState} last={lastDecision} now={now} loading={loading} />}
+            <button
+              className={`need-chip ${attnLevel}`}
+              onClick={() => openAttention(null)}
+              aria-label={`${attention.length} item${attention.length === 1 ? "" : "s"} need you (shortcut N)`}
+            >
+              <span className="dot" />
+              {attention.length} {attention.length === 1 ? "needs" : "need"} you
+              <kbd className="hide-sm">N</kbd>
+            </button>
+            <button className="palette-trigger" onClick={() => setPalette(true)} aria-label="Open command menu">
+              <Icon name="search" />
+              <span className="label">Jump to order, exception…</span>
+              <kbd>{mod} K</kbd>
+            </button>
+            <button className="btn btn-ghost btn-sm" onClick={() => void refresh()} aria-label="Refresh">
+              <Icon name="refresh" />
+            </button>
+          </div>
         </header>
         <nav className="mobile-nav" aria-label="Sections">
           {SECTIONS.map((s) => (
@@ -394,7 +510,7 @@ export default function Dashboard({ rules, gatewayWallet }: { rules: Rules; gate
           )}
 
           {section === "overview" && (
-            <Overview data={data} rules={rules} gatewayWallet={gatewayWallet} now={now} loading={loading} fresh={fresh} onOpenOrder={setDrawer} onApprove={approveOrder} onException={exceptionAction} onNavigate={navigate} onScene={onScene} />
+            <Overview data={data} rules={rules} gatewayWallet={gatewayWallet} now={now} loading={loading} fresh={fresh} onOpenOrder={setDrawer} onNavigate={navigate} onScene={onScene} onReview={openAttention} />
           )}
           {section === "orders" && <Orders data={data} now={now} loading={loading} fresh={fresh} filter={filter} onFilter={setFilter} onOpen={setDrawer} onApprove={approveOrder} />}
           {section === "exceptions" && <Exceptions data={data} now={now} loading={loading} fresh={fresh} onOpenOrder={setDrawer} onAction={exceptionAction} />}
@@ -403,10 +519,29 @@ export default function Dashboard({ rules, gatewayWallet }: { rules: Rules; gate
         </main>
       </div>
 
+      {attnOpen && (
+        <AttentionDrawer
+          items={attention}
+          focusKey={attnFocus}
+          now={now}
+          inFlight={inFlight}
+          errors={actionErrors}
+          suspended={confirm !== null || palette}
+          onClose={closeAttention}
+          onApprove={approveOrder}
+          onException={exceptionAction}
+          onOpenOrder={(order) => {
+            setAttnOpen(false);
+            setDrawer(order);
+          }}
+        />
+      )}
+
       {drawer && (
         <OrderDrawer
           order={drawer}
           data={data}
+          now={now}
           onClose={() => setDrawer(null)}
           onApprove={approveOrder}
           onException={exceptionAction}
@@ -419,7 +554,7 @@ export default function Dashboard({ rules, gatewayWallet }: { rules: Rules; gate
         <button className="fab" onClick={() => openCopilot()} aria-label={`Open copilot${unseen ? " (new activity)" : ""}`}>
           <span className="orb"><Icon name="spark" /></span>
           <span className="label">Ask copilot</span>
-          <kbd>Ctrl /</kbd>
+          <kbd>{mod} /</kbd>
           {unseen && <span className="news" aria-hidden="true" />}
         </button>
       )}
@@ -427,7 +562,7 @@ export default function Dashboard({ rules, gatewayWallet }: { rules: Rules; gate
         <Copilot key={copilot.key} context={copilotContext} orders={data.orders} seed={copilot.seed} onClose={closeCopilot} onOpenOrder={openOrderById} />
       )}
 
-      {palette && <CommandPalette sections={SECTIONS} orders={data.orders} exceptions={data.exceptions} onRun={runPalette} onClose={() => setPalette(false)} />}
+      {palette && <CommandPalette sections={SECTIONS} orders={data.orders} exceptions={data.exceptions} sellers={data.sellers} onRun={runPalette} onClose={() => setPalette(false)} />}
       {confirm && <ConfirmDialog request={confirm} busy={confirmBusy} onCancel={() => setConfirm(null)} onConfirm={runConfirm} />}
 
       <div className="toasts" role="status" aria-live="polite">

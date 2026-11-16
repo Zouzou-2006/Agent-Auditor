@@ -1,13 +1,18 @@
 "use client";
+// One order's full story (owner: Aidan). The top reads in plain words; ids, wallet addresses, the memo
+// and raw JSON live in the collapsed "Technical details" section at the bottom.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ExceptionRow, OrderRow } from "@/lib/db-types";
-import { formatUsd, orderTrail, STEP_PROVENANCE, type DashboardData } from "@/lib/dashboard/model";
-import { AddrLink, ExceptionStatusBadge, fullTime, Icon, SellerStatusBadge, SeverityBadge, StatusBadge, TxLink } from "./ui";
+import { explorerTxUrl, formatUsd, orderTrail, STEP_PROVENANCE, type DashboardData } from "@/lib/dashboard/model";
+import { exceptionText, orderStamp, orderSummary, orderText, threeWay } from "@/lib/dashboard/overview";
+import { deliveryText, EXCEPTION_TITLE, itemLabel, longDate, paramsText, PROVENANCE_LABEL, sellerName } from "@/lib/dashboard/words";
+import { AddrLink, ExceptionStatusBadge, fullTime, Icon, MatchChips, SellerStatusBadge, SeverityBadge, Stamp, StatusBadge } from "./ui";
 
 interface Props {
   order: OrderRow;
   data: DashboardData;
+  now: number;
   onClose: () => void;
   onApprove: (order: OrderRow) => void;
   onException: (exc: ExceptionRow, action: "approve" | "block_seller") => void;
@@ -17,13 +22,19 @@ interface Props {
 
 const STEP_ICON = { done: "check", failed: "x", waiting: "clock", skipped: "minus" } as const;
 
-export default function OrderDrawer({ order, data, onClose, onApprove, onException, onAsk, onSummarize }: Props) {
+export default function OrderDrawer({ order, data, now, onClose, onApprove, onException, onAsk, onSummarize }: Props) {
   const [summarizing, setSummarizing] = useState(false);
   // Re-read the order from live data so the drawer updates when its status changes.
   const live = data.orders.find((o) => o.order_id === order.order_id) ?? order;
   const t = useMemo(() => orderTrail(live, data), [live, data]);
   const closeRef = useRef<HTMLButtonElement>(null);
   const [copied, setCopied] = useState(false);
+  const seller = sellerName(live.seller_id, data.sellers);
+  const item = itemLabel(live);
+  const aiSummary = orderSummary(live, data);
+  const match = useMemo(() => threeWay(live, data), [live, data]);
+  const stamp = orderStamp(live, now);
+  const paidToSeller = t.payment && t.seller ? t.payment.to_wallet === t.seller.wallet : false;
 
   useEffect(() => {
     closeRef.current?.focus();
@@ -47,17 +58,15 @@ export default function OrderDrawer({ order, data, onClose, onApprove, onExcepti
       <div className="overlay" onClick={onClose} />
       <aside className="drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title">
         <div className="drawer-head">
-          <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 0 }}>
-            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-              <StatusBadge status={live.status} />
-              {live.deny_reason && <span className="reason">{live.deny_reason}</span>}
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
+            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              {stamp ? <Stamp kind={stamp} title={live.status} /> : <StatusBadge status={live.status} />}
+              {live.deny_reason && <span className="reason">&ldquo;{live.deny_reason}&rdquo;</span>}
             </div>
-            <h2 id="drawer-title" style={{ margin: 0, fontSize: 15 }}>
-              {live.item} from {t.seller?.name ?? live.seller_id}
+            <h2 id="drawer-title" className="drawer-title">
+              {item.charAt(0).toUpperCase() + item.slice(1)} from {seller}
             </h2>
-            <button className="mono muted" onClick={copy} style={{ background: "none", border: 0, padding: 0, cursor: "pointer", textAlign: "left" }} title="Copy order_id">
-              {live.order_id} {copied ? "· copied" : ""}
-            </button>
+            <MatchChips match={match} tx={t.payment?.tx_signature ?? null} />
           </div>
           <button className="btn btn-sm" style={{ marginLeft: "auto" }} onClick={() => onAsk(live)}>
             <Icon name="spark" />
@@ -81,28 +90,35 @@ export default function OrderDrawer({ order, data, onClose, onApprove, onExcepti
           <div>
             <h3>
               Why
-              <span className="ai-tag" title="Written by Claude from the saved facts. It explains the decision; it never makes it."><Icon name="spark" />AI-written</span>
+              {aiSummary && (
+                <span className="ai-tag" title="Written by Claude from the saved facts. It explains the decision; it never makes it."><Icon name="spark" />AI-written</span>
+              )}
             </h3>
-            {live.summary || t.exception?.summary ? (
-              <div className="summary">{live.summary ?? t.exception?.summary}</div>
-            ) : live.status === "paying" ? (
-              <div className="cell-sub">A summary is written once the payment settles.</div>
+            {aiSummary ? (
+              <blockquote className="why ai">{aiSummary}</blockquote>
             ) : (
-              <button
-                className="btn btn-sm"
-                disabled={summarizing}
-                onClick={async () => {
-                  setSummarizing(true);
-                  try {
-                    await onSummarize(live);
-                  } finally {
-                    setSummarizing(false);
-                  }
-                }}
-              >
-                {summarizing ? <Icon name="refresh" className="spin" /> : <Icon name="spark" />}
-                {summarizing ? "Writing summary…" : "Generate one-line summary"}
-              </button>
+              <div style={{ display: "flex", flexDirection: "column", gap: 12, alignItems: "flex-start" }}>
+                <blockquote className="why">{t.exception ? exceptionText(t.exception, data) : orderText(live, data)}</blockquote>
+                {live.status === "paying" ? (
+                  <div className="cell-sub">An AI summary is written once the payment settles.</div>
+                ) : live.summary === null ? (
+                  <button
+                    className="btn btn-sm"
+                    disabled={summarizing}
+                    onClick={async () => {
+                      setSummarizing(true);
+                      try {
+                        await onSummarize(live);
+                      } finally {
+                        setSummarizing(false);
+                      }
+                    }}
+                  >
+                    {summarizing ? <Icon name="refresh" className="spin" /> : <Icon name="spark" />}
+                    {summarizing ? "Writing summary…" : "Generate one-line summary"}
+                  </button>
+                ) : null}
+              </div>
             )}
           </div>
 
@@ -112,20 +128,23 @@ export default function OrderDrawer({ order, data, onClose, onApprove, onExcepti
               {t.steps.map((s) => {
                 const p = STEP_PROVENANCE[s.key];
                 return (
-                  <li key={s.key} className={s.state}>
+                  <li key={s.key} className={s.state} tabIndex={0}>
                     <span className="node" aria-label={s.state}>
                       <Icon name={STEP_ICON[s.state]} />
                     </span>
                     <div>
                       <div className="t-row">
                         <span className="t-label">{s.label}</span>
-                        <span className={`prov ${p.basis}`} title={`Decided by: ${p.source}`}>
-                          <i />
-                          {p.basis}
-                        </span>
+                        {/* Rule steps are the default; tag only the ones decided by the blockchain or a person. */}
+                        {p.basis !== "deterministic" && (
+                          <span className={`prov ${p.basis}`} title={`Decided by: ${p.source} (${p.basis})`}>
+                            <i />
+                            {PROVENANCE_LABEL[p.basis]}
+                          </span>
+                        )}
                       </div>
                       <div className="t-detail">{s.detail}</div>
-                      <div className="cell-sub" style={{ fontSize: 11 }}>{p.source}</div>
+                      <div className="t-source cell-sub">{p.source}</div>
                     </div>
                   </li>
                 );
@@ -138,19 +157,17 @@ export default function OrderDrawer({ order, data, onClose, onApprove, onExcepti
             <dl className="kv">
               <dt>Seller</dt>
               <dd style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                {live.seller_id}
-                {t.seller ? <SellerStatusBadge status={t.seller.status} /> : <span className="reason">not in sellers</span>}
+                {seller}
+                {t.seller && <SellerStatusBadge status={t.seller.status} />}
               </dd>
-              <dt>Params</dt>
-              <dd className="mono">{JSON.stringify(live.params)}</dd>
+              <dt>Asked for</dt>
+              <dd>{paramsText(live.params)}</dd>
               <dt>Purpose</dt>
               <dd>{live.purpose}</dd>
               <dt>Max amount</dt>
               <dd className="num">{formatUsd(live.max_amount)}</dd>
-              <dt>Quote</dt>
-              <dd className="num">
-                {formatUsd(live.quote_amount)} {live.quote_wallet && <>to <AddrLink addr={live.quote_wallet} /></>}
-              </dd>
+              <dt>Seller&apos;s price</dt>
+              <dd className="num">{formatUsd(live.quote_amount)}</dd>
               <dt>Created</dt>
               <dd>{fullTime(live.created_at)}</dd>
             </dl>
@@ -158,26 +175,28 @@ export default function OrderDrawer({ order, data, onClose, onApprove, onExcepti
 
           {t.payment && (
             <div>
-              <h3>Payment (from the chain)</h3>
+              <h3>Payment</h3>
               <dl className="kv">
-                <dt>Transaction</dt>
-                <dd><TxLink sig={t.payment.tx_signature} /></dd>
                 <dt>Amount</dt>
                 <dd className="num">{formatUsd(t.payment.amount)}</dd>
-                <dt>From → to</dt>
-                <dd><AddrLink addr={t.payment.from_wallet} /> → <AddrLink addr={t.payment.to_wallet} /></dd>
-                <dt>Memo</dt>
-                <dd className="mono">{t.payment.memo ?? "—"}</dd>
-                <dt>Block time</dt>
+                <dt>Paid to</dt>
+                <dd>{paidToSeller ? seller : <span className="reason crit">a wallet that isn&apos;t the seller&apos;s</span>}</dd>
+                <dt>Paid at</dt>
                 <dd>{fullTime(t.payment.block_time)}</dd>
+                <dt>Proof</dt>
+                <dd>
+                  <a href={explorerTxUrl(t.payment.tx_signature)} target="_blank" rel="noreferrer" title={t.payment.tx_signature}>
+                    View on Solana <Icon name="external" />
+                  </a>
+                </dd>
               </dl>
             </div>
           )}
 
           {t.delivery && (
             <div>
-              <h3>Delivery ({t.delivery.passed ? "passed" : "failed"})</h3>
-              <div className="code">{t.delivery.body || "(empty body)"}</div>
+              <h3>What the seller delivered ({t.delivery.passed ? "checks passed" : "checks failed"})</h3>
+              <p className="drawer-text">{deliveryText(t.delivery.body)}</p>
             </div>
           )}
 
@@ -196,7 +215,7 @@ export default function OrderDrawer({ order, data, onClose, onApprove, onExcepti
                 <tbody>
                   {t.journal.map((j) => (
                     <tr key={j.entry_id}>
-                      <td>{j.entry_date}</td>
+                      <td title={j.entry_date}>{longDate(j.entry_date)}</td>
                       <td>{j.debit_account}</td>
                       <td>{j.credit_account}</td>
                       <td className="right num">{formatUsd(j.amount)}</td>
@@ -211,7 +230,7 @@ export default function OrderDrawer({ order, data, onClose, onApprove, onExcepti
             <div>
               <h3>Exception</h3>
               <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                <span className="mono">{t.exception.type}</span>
+                <span title={t.exception.type}>{EXCEPTION_TITLE[t.exception.type]}</span>
                 <SeverityBadge severity={t.exception.severity} />
                 <ExceptionStatusBadge status={t.exception.status} />
                 {t.exception.status === "open" && t.exception.type !== "no_order" && (
@@ -223,6 +242,67 @@ export default function OrderDrawer({ order, data, onClose, onApprove, onExcepti
               </div>
             </div>
           )}
+
+          <details className="tech">
+            <summary>Technical details</summary>
+            <dl className="kv">
+              <dt>Order ID</dt>
+              <dd>
+                <button className="mono linklike" onClick={copy} title="Copy">
+                  {live.order_id}
+                </button>
+                {copied && <span className="muted"> · copied</span>}
+              </dd>
+              <dt>Status</dt>
+              <dd className="mono">{live.status}</dd>
+              <dt>Seller ID</dt>
+              <dd className="mono">{live.seller_id}</dd>
+              <dt>Item</dt>
+              <dd className="mono">{live.item} {JSON.stringify(live.params)}</dd>
+              {live.quote_wallet && (
+                <>
+                  <dt>Quote wallet</dt>
+                  <dd><AddrLink addr={live.quote_wallet} label={live.quote_wallet} /></dd>
+                </>
+              )}
+              {t.payment && (
+                <>
+                  <dt>Transaction</dt>
+                  <dd className="mono"><a href={explorerTxUrl(t.payment.tx_signature)} target="_blank" rel="noreferrer">{t.payment.tx_signature}</a></dd>
+                  <dt>From → to</dt>
+                  <dd><AddrLink addr={t.payment.from_wallet} label={t.payment.from_wallet} /> → <AddrLink addr={t.payment.to_wallet} label={t.payment.to_wallet} /></dd>
+                  <dt>Memo</dt>
+                  <dd className="mono">{t.payment.memo ?? "—"}</dd>
+                </>
+              )}
+              {t.delivery && (
+                <>
+                  <dt>Delivery body</dt>
+                  <dd><div className="code">{t.delivery.body || "(empty)"}</div></dd>
+                  <dt>Delivery checks</dt>
+                  <dd className="mono">{JSON.stringify(t.delivery.checks)}</dd>
+                </>
+              )}
+              {live.summary && live.summary !== aiSummary && (
+                <>
+                  <dt>Stored summary</dt>
+                  <dd>{live.summary}</dd>
+                </>
+              )}
+              {t.exception && (
+                <>
+                  <dt>Exception</dt>
+                  <dd className="mono">{t.exception.type} · {t.exception.severity} · {t.exception.status}</dd>
+                  {t.exception.summary && (
+                    <>
+                      <dt>Exception note</dt>
+                      <dd>{t.exception.summary}</dd>
+                    </>
+                  )}
+                </>
+              )}
+            </dl>
+          </details>
         </div>
       </aside>
     </>

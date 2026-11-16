@@ -2,7 +2,9 @@
 
 import { useMemo, useState } from "react";
 import type { OrderRow } from "@/lib/db-types";
-import { formatUsd, outgoing, shortId, type DashboardData } from "@/lib/dashboard/model";
+import { explorerTxUrl, formatUsd, outgoing, type DashboardData } from "@/lib/dashboard/model";
+import { ledgerTotals } from "@/lib/dashboard/overview";
+import { itemLabel, longDate } from "@/lib/dashboard/words";
 import { AddrLink, Empty, fullTime, SkeletonRows, timeAgo, TxLink } from "./ui";
 
 interface Props {
@@ -22,17 +24,14 @@ export default function Ledger({ data, gatewayWallet, now, loading, fresh, onOpe
     [data.payments],
   );
   const out = useMemo(() => new Set(outgoing(data.payments, gatewayWallet).map((p) => p.tx_signature)), [data.payments, gatewayWallet]);
-  const totals = useMemo(() => {
-    const byAccount = new Map<string, number>();
-    for (const j of data.journal_entries) byAccount.set(j.debit_account, (byAccount.get(j.debit_account) ?? 0) + j.amount);
-    return [...byAccount.entries()];
-  }, [data.journal_entries]);
-  const orderLink = (id: string | null) => {
+  const totals = useMemo(() => ledgerTotals(data, gatewayWallet), [data, gatewayWallet]);
+  const orderLink = (id: string | null, memo?: string | null) => {
     const o = id ? orders.get(id) : undefined;
-    if (!o) return <span className="muted">{id ? shortId(id) : "none"}</span>;
+    const tip = [id && `Order ${id}`, memo && `Memo ${memo}`].filter(Boolean).join(" · ") || undefined;
+    if (!o) return <span className="muted" title={tip}>{id ? "Order not loaded" : "No order"}</span>;
     return (
-      <button className="mono" style={{ background: "none", border: 0, padding: 0, color: "var(--accent)", cursor: "pointer" }} onClick={() => onOpenOrder(o)}>
-        {shortId(o.order_id)}
+      <button className="linklike" onClick={() => onOpenOrder(o)} title={tip}>
+        {itemLabel(o)}
       </button>
     );
   };
@@ -55,44 +54,65 @@ export default function Ledger({ data, gatewayWallet, now, loading, fresh, onOpe
 
       {tab === "journal" ? (
         <>
-          {totals.length > 0 && (
-            <div className="toolbar" style={{ gap: 20 }}>
-              {totals.map(([account, amount]) => (
-                <span key={account} className="dim">
-                  {account}: <b className="num" style={{ color: "var(--text)" }}>{formatUsd(amount)}</b>
+          <div className="toolbar ledger-totals">
+            <span>On-chain out <b className="num">{formatUsd(totals.out)}</b></span>
+            <span aria-hidden="true">·</span>
+            <span>Booked <b className="num">{formatUsd(totals.booked)}</b></span>
+            <span aria-hidden="true">·</span>
+            <span>
+              Not booked <b className={`num${totals.notBooked > 0 ? " crit-text" : ""}`}>{formatUsd(totals.notBooked)}</b>
+              {totals.notBooked > 0 && totals.unmatched > 0 && (
+                <span className="crit-text">
+                  {" "}({totals.unmatched === totals.notBooked ? "payment with no order" : `${formatUsd(totals.unmatched)} is a payment with no order`})
                 </span>
-              ))}
-            </div>
-          )}
+              )}
+              {totals.notBooked > 0 && totals.unmatched === 0 && <span className="muted"> (waiting to be booked)</span>}
+            </span>
+          </div>
           <div className="table-wrap">
-            <table>
+            {/* Accounting format: the entry line, the debit, then the credit indented in its own column. */}
+            <table className="journal">
               <thead>
                 <tr>
-                  <th>Date</th>
-                  <th>Debit</th>
-                  <th>Credit</th>
-                  <th className="right">Amount</th>
-                  <th>Description</th>
-                  <th>Order</th>
-                  <th>Transaction</th>
+                  <th style={{ width: 130 }}>Date</th>
+                  <th>Account</th>
+                  <th className="right" style={{ width: 120 }}>Debit</th>
+                  <th className="right" style={{ width: 120 }}>Credit</th>
                 </tr>
               </thead>
               {loading ? (
-                <SkeletonRows rows={3} cols={7} />
+                <SkeletonRows rows={3} cols={4} />
               ) : (
-                <tbody>
-                  {data.journal_entries.map((j) => (
-                    <tr key={j.entry_id} className={fresh.has(j.entry_id) ? "fresh" : undefined}>
-                      <td className="num">{j.entry_date}</td>
-                      <td>{j.debit_account}</td>
-                      <td>{j.credit_account}</td>
-                      <td className="right num">{formatUsd(j.amount)}</td>
-                      <td className="dim">{j.description}</td>
-                      <td>{orderLink(j.order_id)}</td>
-                      <td><TxLink sig={j.tx_signature} /></td>
+                data.journal_entries.map((j) => (
+                  <tbody key={j.entry_id} className={`je${fresh.has(j.entry_id) ? " fresh" : ""}`}>
+                    <tr className="je-head">
+                      <td className="num" title={j.entry_date}>{longDate(j.entry_date)}</td>
+                      <td colSpan={3}>
+                        <span className="je-desc">{j.description}</span>
+                        <span className="je-refs">
+                          {orderLink(j.order_id)}
+                          {j.tx_signature && (
+                            <a href={explorerTxUrl(j.tx_signature)} target="_blank" rel="noreferrer" title={j.tx_signature}>
+                              on Solana ↗
+                            </a>
+                          )}
+                        </span>
+                      </td>
                     </tr>
-                  ))}
-                </tbody>
+                    <tr className="je-line">
+                      <td />
+                      <td>{j.debit_account}</td>
+                      <td className="right num">{formatUsd(j.amount)}</td>
+                      <td />
+                    </tr>
+                    <tr className="je-line je-credit">
+                      <td />
+                      <td>{j.credit_account}</td>
+                      <td />
+                      <td className="right num">{formatUsd(j.amount)}</td>
+                    </tr>
+                  </tbody>
+                ))
               )}
             </table>
             {!loading && data.journal_entries.length === 0 && <Empty title="No journal entries yet">Clean purchases are booked here automatically.</Empty>}
@@ -103,34 +123,40 @@ export default function Ledger({ data, gatewayWallet, now, loading, fresh, onOpe
           <table>
             <thead>
               <tr>
-                <th>Block time</th>
+                <th>Time</th>
                 <th>Transaction</th>
                 <th>Direction</th>
                 <th>From → to</th>
                 <th className="right">Amount</th>
-                <th>Memo</th>
                 <th>Matched order</th>
               </tr>
             </thead>
             {loading ? (
-              <SkeletonRows rows={3} cols={7} />
+              <SkeletonRows rows={3} cols={6} />
             ) : (
               <tbody>
                 {payments.map((p) => (
                   <tr key={p.tx_signature} className={fresh.has(p.tx_signature) ? "fresh" : undefined}>
                     <td className="dim" title={fullTime(p.block_time)}>{timeAgo(p.block_time, now)}</td>
                     <td><TxLink sig={p.tx_signature} /></td>
-                    <td className="dim">{out.has(p.tx_signature) ? "out" : "in"}</td>
+                    <td className="dim">{out.has(p.tx_signature) ? "Out" : "In"}</td>
                     <td><AddrLink addr={p.from_wallet} /> → <AddrLink addr={p.to_wallet} /></td>
                     <td className="right num">{formatUsd(p.amount)}</td>
-                    <td className="mono dim">{p.memo ? shortId(p.memo, 6) : "—"}</td>
-                    <td>{p.order_id ? orderLink(p.order_id) : out.has(p.tx_signature) ? <span className="reason crit">no order</span> : <span className="muted">funding</span>}</td>
+                    <td>
+                      {p.order_id ? (
+                        orderLink(p.order_id, p.memo)
+                      ) : out.has(p.tx_signature) ? (
+                        <span className="reason crit" title={p.memo ? `Memo ${p.memo}` : "No memo"}>No order</span>
+                      ) : (
+                        <span className="muted">Incoming funds</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
             )}
           </table>
-          {!loading && payments.length === 0 && <Empty title="No payments seen yet">QuickNode Streams writes every USDC transfer from the wallet here.</Empty>}
+          {!loading && payments.length === 0 && <Empty title="No payments seen yet">Every USDC payment in or out of the wallet shows up here, read from Solana.</Empty>}
         </div>
       )}
     </section>

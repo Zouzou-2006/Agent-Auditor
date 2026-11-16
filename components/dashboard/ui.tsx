@@ -1,9 +1,11 @@
 "use client";
 // Small shared pieces for the dashboard: icons, badges, links, dialog. No data fetching here.
 
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useSyncExternalStore, type ReactNode } from "react";
 import type { ExceptionSeverity, ExceptionStatus, OrderStatus, SellerStatus } from "@/lib/db-types";
 import { explorerAddressUrl, explorerTxUrl, shortId } from "@/lib/dashboard/model";
+import type { MatchState, StampKind, ThreeWay } from "@/lib/dashboard/overview";
+import { EXCEPTION_STATUS_LABEL, friendlyStatus, SELLER_STATUS_LABEL, SEVERITY_LABEL, STAMP_LABEL, timeShort } from "@/lib/dashboard/words";
 
 const paths: Record<string, ReactNode> = {
   overview: <path d="M3 13h4v8H3zM10 9h4v12h-4zM17 4h4v17h-4z" />,
@@ -32,6 +34,8 @@ const paths: Record<string, ReactNode> = {
   user: <path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0" />,
   wallet: <path d="M4 7h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a1 1 0 0 1-1-1zM4 7l11-3v3M16 13h1" />,
   layers: <path d="M12 3 3 8l9 5 9-5-9-5zM3 13l9 5 9-5M3 17.5l9 5 9-5" />,
+  pause: <path d="M9 6v12M15 6v12" />,
+  hourglass: <path d="M7 3h10M7 21h10M8 3v3l4 6-4 6v3M16 3v3l-4 6 4 6v3" />,
 };
 
 export function Icon({ name, className }: { name: keyof typeof paths | string; className?: string }) {
@@ -42,41 +46,149 @@ export function Icon({ name, className }: { name: keyof typeof paths | string; c
   );
 }
 
+// Status color only: green booked, red critical or flagged, amber waiting for a human, grey blocked
+// and in progress. Cyan is the brand color (see app/globals.css), never a status.
 const ORDER_TONE: Record<OrderStatus, string> = {
   booked: "good",
-  paid: "info",
-  paying: "warning",
-  pending_review: "review",
-  denied: "serious",
+  paid: "neutral",
+  paying: "neutral",
+  pending_review: "warning",
+  denied: "neutral",
   exception: "critical",
 };
-const SEVERITY_TONE: Record<ExceptionSeverity, string> = { critical: "critical", high: "serious", medium: "warning" };
-const EXC_STATUS_TONE: Record<ExceptionStatus, string> = { open: "warning", approved: "good", seller_blocked: "critical" };
+const SEVERITY_TONE: Record<ExceptionSeverity, string> = { critical: "critical", high: "warning", medium: "warning" };
+const EXC_STATUS_TONE: Record<ExceptionStatus, string> = { open: "warning", approved: "good", seller_blocked: "neutral" };
 
 export const ORDER_TONE_VAR: Record<OrderStatus, string> = {
   booked: "var(--good)",
-  paid: "var(--info)",
-  paying: "var(--warning)",
-  pending_review: "var(--review)",
-  denied: "var(--serious)",
+  paid: "var(--muted)",
+  paying: "var(--muted)",
+  pending_review: "var(--warning)",
+  denied: "var(--muted)",
   exception: "var(--critical)",
 };
 
-function Badge({ tone, children }: { tone: string; children: ReactNode }) {
+/** Every badge shows plain words; `raw` (the stored value) goes in the tooltip so the team can still see it. */
+function Badge({ tone, raw, children }: { tone: string; raw: string; children: ReactNode }) {
   return (
-    <span className={`badge tone-${tone}`}>
+    <span className={`badge tone-${tone}`} title={raw}>
       <span className="dot" />
       {children}
     </span>
   );
 }
 
-export const StatusBadge = ({ status }: { status: OrderStatus }) => <Badge tone={ORDER_TONE[status]}>{status}</Badge>;
-export const SeverityBadge = ({ severity }: { severity: ExceptionSeverity }) => <Badge tone={SEVERITY_TONE[severity]}>{severity}</Badge>;
-export const ExceptionStatusBadge = ({ status }: { status: ExceptionStatus }) => <Badge tone={EXC_STATUS_TONE[status]}>{status}</Badge>;
-export const SellerStatusBadge = ({ status }: { status: SellerStatus }) => (
-  <Badge tone={status === "approved" ? "good" : "critical"}>{status}</Badge>
+export const StatusBadge = ({ status }: { status: OrderStatus }) => (
+  <Badge tone={ORDER_TONE[status]} raw={status}>{friendlyStatus(status)}</Badge>
 );
+export const SeverityBadge = ({ severity }: { severity: ExceptionSeverity }) => (
+  <Badge tone={SEVERITY_TONE[severity]} raw={severity}>{SEVERITY_LABEL[severity]}</Badge>
+);
+export const ExceptionStatusBadge = ({ status }: { status: ExceptionStatus }) => (
+  <Badge tone={EXC_STATUS_TONE[status]} raw={status}>{EXCEPTION_STATUS_LABEL[status]}</Badge>
+);
+export const SellerStatusBadge = ({ status }: { status: SellerStatus }) => (
+  <Badge tone={status === "approved" ? "good" : "neutral"} raw={status}>{SELLER_STATUS_LABEL[status]}</Badge>
+);
+
+const HOUR_MS = 3_600_000;
+
+/** "Agent idle · ● Live · last decision 2d ago": the top bar's status pill on the Overview. */
+export function AgentStatus({ live, last, now, loading }: { live: "connecting" | "live" | "offline"; last: string | null; now: number; loading: boolean }) {
+  const active = last !== null && now - Date.parse(last) < HOUR_MS;
+  return (
+    <span className="status-pill">
+      <span>{active ? "Agent active" : "Agent idle"}</span>
+      <span aria-hidden="true">·</span>
+      <span className={`live ${live === "live" ? "on" : live === "offline" ? "off" : ""}`}>
+        <span className="dot" />
+        {live === "live" ? "Live" : live === "offline" ? "Reconnecting…" : "Connecting…"}
+      </span>
+      <span aria-hidden="true">·</span>
+      <span>{loading ? "loading…" : last ? <>last decision <time dateTime={last} title={fullTime(last)}>{timeShort(last, now)}</time></> : "no decisions yet"}</span>
+    </span>
+  );
+}
+
+const noSubscribe = () => () => {};
+const modKeyNow = () => (/Macintosh|Mac OS X|iPhone|iPad/.test(navigator.userAgent) ? "⌘" : "Ctrl");
+
+/** The shortcut modifier for keyboard hints: "⌘" on a Mac, "Ctrl" elsewhere (and during server render). */
+export function useModKey(): string {
+  return useSyncExternalStore(noSubscribe, modKeyNow, () => "Ctrl");
+}
+
+/** The result stamp (BOOKED, BLOCKED, FLAGGED, NEEDS APPROVAL, NOT CONFIRMED). `animate` plays the
+ *  stamp-down once, when the row just changed (Dashboard's fresh keys). */
+export function Stamp({ kind, animate = false, title }: { kind: StampKind; animate?: boolean; title?: string }) {
+  return (
+    <span className={`stamp stamp-${kind}${animate ? " stamp-in" : ""}`} title={title}>
+      {STAMP_LABEL[kind]}
+    </span>
+  );
+}
+
+/** Severity in the stamp style, for exception cards: red critical, amber high and medium. */
+export function SeverityStamp({ severity }: { severity: ExceptionSeverity }) {
+  return (
+    <span className={`stamp stamp-sev-${severity}`} title={severity}>
+      {SEVERITY_LABEL[severity]}
+    </span>
+  );
+}
+
+const LEG_ICON: Record<MatchState, string> = { ok: "✓", failed: "✕", blocked: "✕", none: "·" };
+const LEG_WORD: Record<MatchState, string> = { ok: "checks out", failed: "failed", blocked: "blocked", none: "not reached yet" };
+
+/**
+ * Order ↔ Payment ↔ Delivery: linked chips. A blocked order shows only the Order chip; a payment with
+ * no order shows Order ✕ and Payment ✓. With a transaction, the Payment chip opens it on Solana Explorer.
+ */
+export function MatchChips({ match, tx = null, slots = false }: { match: ThreeWay; tx?: string | null; slots?: boolean }) {
+  const legs: [string, MatchState | null, string][] = [
+    ["Order", match.order, match.tips.order],
+    ["Payment", match.payment, match.tips.payment],
+    ["Delivery", match.delivery, match.tips.delivery],
+  ];
+  // With `slots`, a missing leg keeps its space so chips line up in columns down a list.
+  const shown = slots ? legs : legs.filter((l) => l[1] !== null);
+  return (
+    <span className="match">
+      {shown.map(([name, state, tip], i) => {
+        const slot = `s-${name.toLowerCase()}`;
+        if (state === null) return <span key={name} className={`match-step ${slot} slot-empty`} aria-hidden="true" />;
+        const body = (
+          <>
+            <i aria-hidden="true">{LEG_ICON[state]}</i>
+            {name}
+          </>
+        );
+        return (
+          <span key={name} className={`match-step ${slot}`}>
+            {i > 0 && <span className={`match-link${state === "none" ? " off" : ""}`} aria-hidden="true" />}
+            {name === "Payment" && tx ? (
+              <a
+                className={`leg leg-${state} leg-link`}
+                href={explorerTxUrl(tx)}
+                target="_blank"
+                rel="noreferrer"
+                title="View on Solana"
+                aria-label={`Payment ${LEG_WORD[state]}. View on Solana`}
+                onClick={(e) => e.stopPropagation()}
+              >
+                {body}
+              </a>
+            ) : (
+              <span className={`leg leg-${state}`} title={tip ? `${name}: ${LEG_WORD[state]}\n${tip}` : `${name}: ${LEG_WORD[state]}`} aria-label={`${name} ${LEG_WORD[state]}`}>
+                {body}
+              </span>
+            )}
+          </span>
+        );
+      })}
+    </span>
+  );
+}
 
 export function TxLink({ sig }: { sig: string | null }) {
   if (!sig) return <span className="muted">—</span>;
@@ -96,17 +208,14 @@ export function AddrLink({ addr, label }: { addr: string | null; label?: string 
   );
 }
 
+/** "just now", "5m ago", "2h ago" (see timeShort in lib/dashboard/words.ts). */
 export function timeAgo(iso: string | null, now: number): string {
-  if (!iso) return "—";
-  const s = Math.max(0, Math.round((now - new Date(iso).getTime()) / 1000));
-  if (s < 60) return `${s}s ago`;
-  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
-  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
-  return `${Math.floor(s / 86400)}d ago`;
+  return iso ? timeShort(iso, now) : "—";
 }
 
+/** Full timestamp in America/New_York, the dashboard's display time zone. */
 export function fullTime(iso: string | null): string {
-  return iso ? new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "medium" }) : "—";
+  return iso ? `${new Date(iso).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "medium", timeZone: "America/New_York" })} ET` : "—";
 }
 
 export function Empty({ title, children, icon = "layers" }: { title: string; children?: ReactNode; icon?: string }) {
