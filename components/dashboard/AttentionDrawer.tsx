@@ -57,7 +57,7 @@ export default function AttentionDrawer({ items, focusKey = null, now, inFlight,
       <aside className="drawer attn-drawer" role="dialog" aria-modal="true" aria-labelledby="attn-drawer-title">
         <div className="drawer-head">
           <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
-            <h2 id="attn-drawer-title" style={{ margin: 0, fontSize: 15 }}>
+            <h2 id="attn-drawer-title" style={{ margin: 0, fontSize: "var(--fs-head)" }}>
               Needs you
             </h2>
             <span className="cell-sub">{items.length === 0 ? "Nothing waiting" : `${items.length} waiting for a decision`}</span>

@@ -74,10 +74,10 @@ export default function Ledger({ data, gatewayWallet, now, loading, fresh, onOpe
             <table className="journal">
               <thead>
                 <tr>
-                  <th style={{ width: 130 }}>Date</th>
+                  <th style={{ width: 111 }}>Date</th>
                   <th>Account</th>
-                  <th className="right" style={{ width: 120 }}>Debit</th>
-                  <th className="right" style={{ width: 120 }}>Credit</th>
+                  <th className="right" style={{ width: 102 }}>Debit</th>
+                  <th className="right" style={{ width: 102 }}>Credit</th>
                 </tr>
               </thead>
               {loading ? (

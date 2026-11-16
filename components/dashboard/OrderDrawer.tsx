@@ -58,8 +58,8 @@ export default function OrderDrawer({ order, data, now, onClose, onApprove, onEx
       <div className="overlay" onClick={onClose} />
       <aside className="drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title">
         <div className="drawer-head">
-          <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
-            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 9, minWidth: 0 }}>
+            <div style={{ display: "flex", gap: 9, alignItems: "center", flexWrap: "wrap" }}>
               {stamp ? <Stamp kind={stamp} title={live.status} /> : <StatusBadge status={live.status} />}
               {live.deny_reason && <span className="reason">&ldquo;{live.deny_reason}&rdquo;</span>}
             </div>
@@ -97,7 +97,7 @@ export default function OrderDrawer({ order, data, now, onClose, onApprove, onEx
             {aiSummary ? (
               <blockquote className="why ai">{aiSummary}</blockquote>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 12, alignItems: "flex-start" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10, alignItems: "flex-start" }}>
                 <blockquote className="why">{t.exception ? exceptionText(t.exception, data) : orderText(live, data)}</blockquote>
                 {live.status === "paying" ? (
                   <div className="cell-sub">An AI summary is written once the payment settles.</div>
@@ -156,7 +156,7 @@ export default function OrderDrawer({ order, data, now, onClose, onApprove, onEx
             <h3>Order</h3>
             <dl className="kv">
               <dt>Seller</dt>
-              <dd style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <dd style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap" }}>
                 {seller}
                 {t.seller && <SellerStatusBadge status={t.seller.status} />}
               </dd>
@@ -229,12 +229,12 @@ export default function OrderDrawer({ order, data, now, onClose, onApprove, onEx
           {t.exception && (
             <div>
               <h3>Exception</h3>
-              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <div style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap" }}>
                 <span title={t.exception.type}>{EXCEPTION_TITLE[t.exception.type]}</span>
                 <SeverityBadge severity={t.exception.severity} />
                 <ExceptionStatusBadge status={t.exception.status} />
                 {t.exception.status === "open" && t.exception.type !== "no_order" && (
-                  <span style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+                  <span style={{ marginLeft: "auto", display: "flex", gap: 5 }}>
                     <button className="btn btn-sm" onClick={() => onException(t.exception as ExceptionRow, "approve")}>Approve</button>
                     <button className="btn btn-sm btn-danger" onClick={() => onException(t.exception as ExceptionRow, "block_seller")}>Block seller</button>
                   </span>
