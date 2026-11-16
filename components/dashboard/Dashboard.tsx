@@ -1,6 +1,6 @@
 "use client";
 // The dashboard shell: live data (Supabase realtime + a slow poll fallback), navigation, the order
-// drawer, the command palette, the floating copilot, confirmations for human actions, and toasts.
+// drawer, the command palette, the floating "Ask the auditor" assistant, confirmations for human actions, and toasts.
 // Reads with the anon key only; every action goes through the existing API routes (SPEC.md section 10).
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -20,7 +20,7 @@ import Ledger from "./Ledger";
 import OrderDrawer from "./OrderDrawer";
 import Orders from "./Orders";
 import Overview from "./Overview";
-import { AgentStatus, ConfirmDialog, Icon, timeAgo, useModKey, type ConfirmRequest } from "./ui";
+import { AgentStatus, ConfirmDialog, Icon, Logo, timeAgo, useModKey, type ConfirmRequest } from "./ui";
 
 const TABLES = ["sellers", "orders", "payments", "deliveries", "journal_entries", "exceptions"] as const;
 const SECTIONS = [
@@ -435,7 +435,7 @@ export default function Dashboard({ rules, gatewayWallet }: { rules: Rules; gate
     <div className="shell">
       <aside className="sidebar">
         <div className="brand">
-          <div className="brand-mark">AA</div>
+          <Logo />
           <div>
             <div className="brand-name">Agent Auditor</div>
             <div className="brand-sub" title={`${networkLabel(rules.network)}: ${rules.network}`}>Controls for AI spend</div>
@@ -551,9 +551,9 @@ export default function Dashboard({ rules, gatewayWallet }: { rules: Rules; gate
       )}
 
       {!copilot.open && (
-        <button className="fab" onClick={() => openCopilot()} aria-label={`Open copilot${unseen ? " (new activity)" : ""}`}>
-          <span className="orb"><Icon name="spark" /></span>
-          <span className="label">Ask copilot</span>
+        <button className="fab" onClick={() => openCopilot()} aria-label={`Ask the auditor${unseen ? " (new activity)" : ""}`} title={`Ask the auditor (${mod} /)`}>
+          <span className="orb"><Icon name="sparkle" /></span>
+          <span className="label">Ask the auditor</span>
           <kbd>{mod} /</kbd>
           {unseen && <span className="news" aria-hidden="true" />}
         </button>

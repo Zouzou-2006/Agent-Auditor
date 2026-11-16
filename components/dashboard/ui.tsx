@@ -13,7 +13,6 @@ const paths: Record<string, ReactNode> = {
   exceptions: <path d="M12 3 2 20h20L12 3zm0 6v5m0 3v.5" />,
   ledger: <path d="M5 3h11l3 3v15H5zM9 9h6M9 13h6M9 17h4" />,
   controls: <path d="M4 7h10M18 7h2M4 17h4M12 17h8M16 5v4M10 15v4" />,
-  spark: <path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6" />,
   search: <path d="M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zm9 16-4-4" />,
   refresh: <path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7" />,
   close: <path d="M6 6l12 12M18 6 6 18" />,
@@ -38,10 +37,35 @@ const paths: Record<string, ReactNode> = {
   hourglass: <path d="M7 3h10M7 21h10M8 3v3l4 6-4 6v3M16 3v3l-4 6 4 6v3" />,
 };
 
-export function Icon({ name, className }: { name: keyof typeof paths | string; className?: string }) {
+// Solid icons: drawn with fill, no stroke. "sparkle" marks anything AI (the assistant, AI-written text).
+const solid: Record<string, ReactNode> = {
+  sparkle: (
+    <path d="M10 3 C10.6 7.6 12.4 9.4 17 10 C12.4 10.6 10.6 12.4 10 17 C9.4 12.4 7.6 10.6 3 10 C7.6 9.4 9.4 7.6 10 3 Z M18.5 14 C18.8 16.2 19.8 17.2 22 17.5 C19.8 17.8 18.8 18.8 18.5 21 C18.2 18.8 17.2 17.8 15 17.5 C17.2 17.2 18.2 16.2 18.5 14 Z" />
+  ),
+};
+
+export function Icon({ name, className }: { name: keyof typeof paths | keyof typeof solid | string; className?: string }) {
+  if (solid[name]) {
+    return (
+      <svg viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true" className={className}>
+        {solid[name]}
+      </svg>
+    );
+  }
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={className}>
       {paths[name]}
+    </svg>
+  );
+}
+
+/** The Agent Auditor mark: a T-account, debit dot on the left (brand cyan), credit dot on the right (green). */
+export function Logo() {
+  return (
+    <svg className="logo" viewBox="0 0 48 48" aria-hidden="true" focusable="false">
+      <path d="M8 14 H40 M24 14 V40" fill="none" stroke="var(--accent)" strokeWidth="4" strokeLinecap="round" />
+      <circle cx="15" cy="25" r="3.2" fill="var(--accent)" />
+      <circle cx="33" cy="25" r="3.2" fill="var(--good)" />
     </svg>
   );
 }
