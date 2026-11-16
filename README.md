@@ -163,6 +163,9 @@ From `.env.example`:
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase service-role key for server code. Never sent to the browser. |
 | `QUICKNODE_STREAMS_SECRET` | The QuickNode Stream's security token. The webhook uses it to check the signature on every delivery and rejects anything unsigned. |
 | `ANTHROPIC_API_KEY` | Claude API key for the buyer agent. |
+| `AGENT_API_KEY` | The buyer agent's key for the gateway, sent as `Authorization: Bearer <key>` on `POST /api/orders` (32+ characters). Without it the agent files nothing. |
+| `DASHBOARD_PASSWORD` | The team's shared password for `/login`, which unlocks Approve, Block Seller, the copilot and summaries (12+ characters). Shared out of band; never commit it or post it in Slack. |
+| `AUTH_SESSION_SECRET` | Signs the team's session cookie (32+ characters). Server only; never commit it. |
 | `USDC_MINT` | The devnet USDC mint (`4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU`). |
 
 Used by specific scripts:
