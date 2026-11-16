@@ -82,7 +82,7 @@ export default function Overview({ data, rules, gatewayWallet, now, loading, fre
         <div className="strip-half" title={`${week.purchases} purchase${week.purchases === 1 ? "" : "s"}, confirmed on Solana · since Monday ET`}>
           <span className="strip-label">This week</span>
           {loading ? (
-            <span className="skeleton" style={{ width: 160, height: 28 }} />
+            <span className="skeleton" style={{ width: 136, height: 24 }} />
           ) : (
             <span className="strip-value num">
               {dollars(week.spent)}
@@ -100,7 +100,7 @@ export default function Overview({ data, rules, gatewayWallet, now, loading, fre
         <div className="strip-half strip-right" title={`Daily budget resets at ${etClock(nextUtcMidnight(now))} ET`}>
           <span className="strip-label">Today</span>
           {loading ? (
-            <span className="skeleton" style={{ width: 140, height: 28 }} />
+            <span className="skeleton" style={{ width: 119, height: 24 }} />
           ) : (
             <span className="strip-value num">
               {/* Cyan only when something was spent; $0.00 stays plain. */}
@@ -188,7 +188,7 @@ function Outcome({
 }) {
   return (
     <button className={`outcome outcome-${tone}`} onClick={onClick} title={go}>
-      <span className="outcome-value num">{loading ? <span className="skeleton" style={{ display: "block", width: 40, height: 40 }} /> : value}</span>
+      <span className="outcome-value num">{loading ? <span className="skeleton" style={{ display: "block", width: 34, height: 34 }} /> : value}</span>
       <span className="outcome-label">{label}</span>
       <span className="outcome-note">{note}</span>
     </button>

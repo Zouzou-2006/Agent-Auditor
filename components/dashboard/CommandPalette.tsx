@@ -121,7 +121,7 @@ export default function CommandPalette({ sections, orders, exceptions, sellers, 
           <kbd>esc</kbd>
         </div>
         <div className="palette-list" id="palette-list" role="listbox" ref={listRef}>
-          {items.length === 0 && <div className="empty" style={{ padding: 24 }}>No matches</div>}
+          {items.length === 0 && <div className="empty" style={{ padding: 20 }}>No matches</div>}
           {items.map((it, i) => {
             const header = it.group !== lastGroup ? <div className="palette-group" key={`g-${it.group}`}>{it.group}</div> : null;
             lastGroup = it.group;

@@ -78,7 +78,7 @@ export default function Controls({ data, rules, gatewayWallet, balance, now }: P
             <table>
               <thead>
                 <tr>
-                  <th style={{ width: 36 }}>#</th>
+                  <th style={{ width: 31 }}>#</th>
                   <th>Rule</th>
                   <th>If it fails</th>
                 </tr>
