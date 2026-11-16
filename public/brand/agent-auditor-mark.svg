@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Agent Auditor">
+  <defs>
+    <linearGradient id="aa-fill" x1="10" y1="6" x2="54" y2="60" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#67e8f9"/>
+      <stop offset="0.5" stop-color="#22d3ee"/>
+      <stop offset="1" stop-color="#34d399"/>
+    </linearGradient>
+  </defs>
+  <!-- shield: the control layer around the agent -->
+  <path d="M32 4 L54 12 V30 C54 44.5 44.6 54.6 32 60 C19.4 54.6 10 44.5 10 30 V12 Z" fill="url(#aa-fill)"/>
+  <path d="M32 4 L54 12 V30 C54 44.5 44.6 54.6 32 60 C19.4 54.6 10 44.5 10 30 V12 Z" fill="none" stroke="#ffffff" stroke-opacity=".35" stroke-width="1.2"/>
+  <!-- check: every payment passes the audit -->
+  <path d="M20.5 32.5 L28.5 40.5 L42 24" fill="none" stroke="#06080b" stroke-width="5.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- agent node at the end of the check, with its trail -->
+  <circle cx="45.5" cy="20" r="4.2" fill="#06080b"/>
+  <circle cx="45.5" cy="20" r="1.7" fill="#a5f3fc"/>
+</svg>
