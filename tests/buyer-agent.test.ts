@@ -1,17 +1,20 @@
 // The buyer agent with the Claude API and the gateway both faked: no network, no API key.
 import type Anthropic from "@anthropic-ai/sdk";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   FILE_ORDER_TOOL,
   MAX_TOOL_CALLS,
   MODEL,
   createClaudeClient,
   parseOrder,
+  postOrder,
   runBuyerAgent,
   type ClaudeClient,
 } from "../lib/buyer-agent";
 
 const TODAY = "2026-11-13";
+/** A made-up key for the tests (32+ chars, like the real one). Never a real secret. */
+const AGENT_KEY = "test-agent-key-not-a-secret-0123456789";
 const ORDER_INPUT = {
   seller_id: "dataco",
   item: "price_quote",
@@ -62,6 +65,7 @@ function lastToolResults(requests: Anthropic.MessageCreateParamsNonStreaming[]) 
   return last.content as Anthropic.ToolResultBlockParam[];
 }
 
+beforeEach(() => vi.stubEnv("AGENT_API_KEY", AGENT_KEY));
 afterEach(() => vi.unstubAllEnvs());
 
 describe("a tool call becomes the exact POST body", () => {
@@ -77,7 +81,7 @@ describe("a tool call becomes the exact POST body", () => {
     const { url, init } = gateway.requests[0];
     expect(url).toBe("http://localhost:3000/api/orders");
     expect(init.method).toBe("POST");
-    expect(init.headers).toEqual({ "content-type": "application/json" });
+    expect(init.headers).toEqual({ "content-type": "application/json", authorization: `Bearer ${AGENT_KEY}` });
     expect(init.body).toBe(
       '{"seller_id":"dataco","item":"price_quote","params":{"ticker":"SOL","date":"2026-11-13"},' +
         '"max_amount":100000,"purpose":"Daily SOL price for the treasury report"}',
@@ -198,6 +202,47 @@ describe("gateway errors are returned to the agent instead of crashing it", () =
 
     expect(gateway.requests).toHaveLength(0);
     expect(lastToolResults(claude.requests)[0]).toMatchObject({ is_error: true });
+  });
+});
+
+describe("the agent key (AGENT_API_KEY)", () => {
+  it("sends Authorization: Bearer <AGENT_API_KEY> when the key is set", async () => {
+    const gateway = fakeGateway();
+
+    const outcome = await postOrder(ORDER_INPUT, { fetch: gateway.fetch, gatewayUrl: "http://localhost:3000" });
+
+    expect(gateway.requests).toHaveLength(1);
+    expect(gateway.requests[0].init.headers).toEqual({
+      "content-type": "application/json",
+      authorization: `Bearer ${AGENT_KEY}`,
+    });
+    expect(outcome).toEqual({ content: JSON.stringify(BOOKED), isError: false });
+  });
+
+  it("files nothing and says AGENT_API_KEY missing when the key isn't set", async () => {
+    vi.stubEnv("AGENT_API_KEY", "");
+    const gateway = fakeGateway();
+
+    const outcome = await postOrder(ORDER_INPUT, { fetch: gateway.fetch });
+
+    expect(gateway.requests).toHaveLength(0);
+    expect(outcome.isError).toBe(true);
+    expect(outcome.content).toContain("AGENT_API_KEY missing");
+  });
+
+  it("the agent reports the missing key to Claude instead of the gateway's 401", async () => {
+    vi.stubEnv("AGENT_API_KEY", "");
+    const claude = fakeClaude(callsTool(toolUse()), ends("Couldn't file the order."));
+    const gateway = fakeGateway(() => Response.json({ error: "authentication required" }, { status: 401 }));
+
+    const run = await runBuyerAgent("task", { client: claude.client, fetch: gateway.fetch, today: TODAY });
+
+    expect(gateway.requests).toHaveLength(0);
+    expect(run.calls[0].outcome).toMatchObject({ isError: true });
+    expect(lastToolResults(claude.requests)[0]).toMatchObject({
+      is_error: true,
+      content: expect.stringContaining("AGENT_API_KEY missing"),
+    });
   });
 });
 
