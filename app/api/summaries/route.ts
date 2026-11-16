@@ -4,6 +4,7 @@
 // null, so it never overwrites a summary or touches a status. The decision itself is never AI-made.
 // -> 200 { "orders": n, "exceptions": n }, 503 without ANTHROPIC_API_KEY, 500 { "error": "internal error" }.
 
+import { assertAuthorized } from "@/lib/auth-http";
 import Anthropic from "@anthropic-ai/sdk";
 import { loadDashboardData } from "@/lib/dashboard/load";
 import { getServiceClient } from "@/lib/db";
@@ -32,6 +33,9 @@ async function summarize(client: Anthropic, facts: string): Promise<string | nul
 }
 
 export async function POST(req: Request): Promise<Response> {
+  const denied = assertAuthorized(req); // also enforced by proxy.ts; checked here too (defense in depth)
+  if (denied) return denied;
+
   let orderId: string | null = null;
   try {
     const body = (await req.json().catch(() => ({}))) as { order_id?: unknown };

@@ -1,6 +1,7 @@
 // POST /api/orders/[id]/approve: approve a pending_review order (owner: Nizar). SPEC.md section 10.
 // Re-runs checkOrder (not needsReview), then the normal flow: 402 quote, checkQuote, pay.
 // 200 with the same body as POST /api/orders, 404 unknown order, 409 not pending_review.
+import { assertAuthorized } from "@/lib/auth-http";
 import { gatewayDeps } from "@/lib/gateway/deps";
 import { approveOrder } from "@/lib/gateway/purchase";
 
@@ -12,7 +13,10 @@ type Context = { params: Promise<{ id: string }> };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export async function POST(_req: Request, { params }: Context): Promise<Response> {
+export async function POST(req: Request, { params }: Context): Promise<Response> {
+  const denied = assertAuthorized(req); // also enforced by proxy.ts; checked here too (defense in depth)
+  if (denied) return denied;
+
   const { id } = await params;
   if (!UUID.test(id)) return Response.json({ error: "order not found" }, { status: 404 });
 

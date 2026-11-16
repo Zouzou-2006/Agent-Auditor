@@ -5,6 +5,7 @@
 // | {"t":"error","v":"..."} | {"t":"done"}. 400 for a bad body, 503 if the Claude key is missing.
 // The tools can only read (lib/assistant/tools.ts), and the data comes from the anon client.
 
+import { assertAuthorized } from "@/lib/auth-http";
 import Anthropic from "@anthropic-ai/sdk";
 import rulesJson from "@/config/rules.json";
 import { runTool, SYSTEM_PROMPT, ToolInputError, TOOLS, type ToolContext } from "@/lib/assistant/tools";
@@ -52,6 +53,9 @@ function parseBody(body: unknown): ChatTurn[] | null {
 }
 
 export async function POST(req: Request): Promise<Response> {
+  const denied = assertAuthorized(req); // also enforced by proxy.ts; checked here too (defense in depth)
+  if (denied) return denied;
+
   let turns: ChatTurn[] | null = null;
   let context: string | null = null;
   try {

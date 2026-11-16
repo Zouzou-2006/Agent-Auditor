@@ -131,18 +131,28 @@ export function gatewayUrl(override?: string): string {
 }
 
 /**
- * POSTs an order to the gateway and returns its reply as tool output. Never throws: an
- * unreachable gateway, an HTTP error or a non-JSON reply comes back as an error outcome,
- * so the agent can report it instead of crashing.
+ * POSTs an order to the gateway and returns its reply as tool output. Never throws: a missing
+ * AGENT_API_KEY, an unreachable gateway, an HTTP error or a non-JSON reply comes back as an
+ * error outcome, so the agent can report it instead of crashing.
+ *
+ * The gateway only accepts orders from the agent with `Authorization: Bearer <AGENT_API_KEY>`
+ * (SPEC.md section 10). Without the key nothing is sent, since the gateway would only answer 401.
  */
 export async function postOrder(order: Order, options: PostOrderOptions = {}): Promise<ToolOutcome> {
+  const apiKey = process.env.AGENT_API_KEY;
+  if (!apiKey) {
+    return {
+      content: "Order not filed: AGENT_API_KEY missing (put it in .env.local; see .env.example).",
+      isError: true,
+    };
+  }
   const url = `${gatewayUrl(options.gatewayUrl)}/api/orders`;
   const doFetch = options.fetch ?? fetch;
   let res: Response;
   try {
     res = await doFetch(url, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
       body: JSON.stringify(order),
       signal: AbortSignal.timeout(GATEWAY_TIMEOUT_MS),
     });
