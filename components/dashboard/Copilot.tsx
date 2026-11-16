@@ -146,7 +146,7 @@ export default function Copilot({ context, orders, seed, onClose, onOpenOrder }:
       });
       if (!res.ok || !res.body) {
         const body = (await res.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(body?.error ?? "The copilot couldn't be reached");
+        throw new Error(body?.error ?? "The auditor assistant couldn't be reached");
       }
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -189,19 +189,19 @@ export default function Copilot({ context, orders, seed, onClose, onOpenOrder }:
   const ctxLabel = context.order ? `order ${context.order.order_id.slice(0, 8)}` : context.section;
 
   return (
-    <aside className="copilot" role="dialog" aria-label="Copilot">
+    <aside className="copilot" role="dialog" aria-label="Auditor assistant">
       <div className="copilot-head">
-        <span className="orb"><Icon name="spark" /></span>
+        <span className="orb"><Icon name="sparkle" /></span>
         <div style={{ minWidth: 0 }}>
-          <div className="title">Audit copilot</div>
+          <div className="title">Auditor assistant</div>
           <div className="subtitle">Answers from live tables · Claude</div>
         </div>
-        <span className="ro" title="The copilot can look things up but can't pay, approve or block"><Icon name="lock" />read-only</span>
+        <span className="ro" title="The assistant can look things up but can't pay, approve or block"><Icon name="lock" />read-only</span>
         <span style={{ marginLeft: "auto", display: "flex", gap: 2 }}>
           {msgs.length > 0 && (
             <button className="btn btn-ghost btn-sm" onClick={clear} disabled={busy}>Clear</button>
           )}
-          <button className="btn btn-ghost btn-sm" onClick={onClose} aria-label="Close copilot"><Icon name="close" /></button>
+          <button className="btn btn-ghost btn-sm" onClick={onClose} aria-label="Close the assistant"><Icon name="close" /></button>
         </span>
       </div>
       <div className="copilot-ctx">
@@ -274,7 +274,7 @@ export default function Copilot({ context, orders, seed, onClose, onOpenOrder }:
         </div>
       )}
       <form className="copilot-input" onSubmit={(e) => { e.preventDefault(); void ask(input); }}>
-        <label className="sr-only" htmlFor="copilot-q">Ask the copilot</label>
+        <label className="sr-only" htmlFor="copilot-q">Ask the auditor</label>
         <textarea
           id="copilot-q"
           ref={inputRef}

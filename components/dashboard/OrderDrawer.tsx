@@ -69,8 +69,8 @@ export default function OrderDrawer({ order, data, now, onClose, onApprove, onEx
             <MatchChips match={match} tx={t.payment?.tx_signature ?? null} />
           </div>
           <button className="btn btn-sm" style={{ marginLeft: "auto" }} onClick={() => onAsk(live)}>
-            <Icon name="spark" />
-            Ask copilot
+            <Icon name="sparkle" />
+            Ask the auditor
           </button>
           <button ref={closeRef} className="btn btn-ghost btn-sm" onClick={onClose} aria-label="Close">
             <Icon name="close" />
@@ -91,7 +91,7 @@ export default function OrderDrawer({ order, data, now, onClose, onApprove, onEx
             <h3>
               Why
               {aiSummary && (
-                <span className="ai-tag" title="Written by Claude from the saved facts. It explains the decision; it never makes it."><Icon name="spark" />AI-written</span>
+                <span className="ai-tag" title="Written by Claude from the saved facts. It explains the decision; it never makes it."><Icon name="sparkle" />AI-written</span>
               )}
             </h3>
             {aiSummary ? (
@@ -114,7 +114,7 @@ export default function OrderDrawer({ order, data, now, onClose, onApprove, onEx
                       }
                     }}
                   >
-                    {summarizing ? <Icon name="refresh" className="spin" /> : <Icon name="spark" />}
+                    {summarizing ? <Icon name="refresh" className="spin" /> : <Icon name="sparkle" />}
                     {summarizing ? "Writing summary…" : "Generate one-line summary"}
                   </button>
                 ) : null}

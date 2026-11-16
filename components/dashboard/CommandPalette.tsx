@@ -1,5 +1,5 @@
 "use client";
-// Ctrl/⌘ + K: jump to any section, order or exception, ask the copilot, or refresh.
+// Ctrl/⌘ + K: jump to any section, order or exception, ask the auditor, or refresh.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ExceptionRow, OrderRow, SellerRow } from "@/lib/db-types";
@@ -44,9 +44,9 @@ export default function CommandPalette({ sections, orders, exceptions, sellers, 
     const q = query.trim().toLowerCase();
     const all: Item[] = [
       ...sections.map((s) => ({ group: "Go to", icon: s.icon, label: s.label, haystack: s.label.toLowerCase(), action: { kind: "section", id: s.id } as PaletteAction })),
-      { group: "Actions", icon: "spark", label: q ? `Ask the copilot: “${query.trim()}”` : "Ask the copilot…", haystack: `ask copilot ai ${q}`, action: { kind: "ask", question: query.trim() } },
+      { group: "Actions", icon: "sparkle", label: q ? `Ask the auditor: “${query.trim()}”` : "Ask the auditor…", haystack: `ask the auditor assistant copilot ai ${q}`, action: { kind: "ask", question: query.trim() } },
       { group: "Actions", icon: "refresh", label: "Refresh data", haystack: "refresh reload", action: { kind: "refresh" } },
-      { group: "Actions", icon: "spark", label: "Generate missing AI summaries", haystack: "generate ai summaries summary explain", action: { kind: "summaries" } },
+      { group: "Actions", icon: "sparkle", label: "Generate missing AI summaries", haystack: "generate ai summaries summary explain", action: { kind: "summaries" } },
       // Labels are plain words; the haystack keeps the raw values too, so either one finds the row.
       ...exceptions.map((e) => ({
         group: "Exceptions",
@@ -69,7 +69,7 @@ export default function CommandPalette({ sections, orders, exceptions, sellers, 
       }),
     ];
     const words = q.split(/\s+/).filter(Boolean);
-    // While typing, real matches come first and "Ask the copilot" moves to the end as the fallback.
+    // While typing, real matches come first and "Ask the auditor" moves to the end as the fallback.
     const matched = words.length
       ? [...all.filter((it) => it.action.kind !== "ask" && words.every((w) => it.haystack.includes(w))), ...all.filter((it) => it.action.kind === "ask").map((it) => ({ ...it, group: "Ask" }))]
       : all;
@@ -102,7 +102,7 @@ export default function CommandPalette({ sections, orders, exceptions, sellers, 
           <input
             ref={inputRef}
             value={query}
-            placeholder="Search orders, exceptions, sections, or ask the copilot…"
+            placeholder="Search orders, exceptions, sections, or ask the auditor…"
             aria-label="Search"
             role="combobox"
             aria-expanded="true"
@@ -140,7 +140,7 @@ export default function CommandPalette({ sections, orders, exceptions, sellers, 
         <div className="palette-foot">
           <span><kbd>↑</kbd> <kbd>↓</kbd> move</span>
           <span><kbd>↵</kbd> open</span>
-          <span style={{ marginLeft: "auto" }}><kbd>{mod}</kbd> <kbd>/</kbd> copilot</span>
+          <span style={{ marginLeft: "auto" }}><kbd>{mod}</kbd> <kbd>/</kbd> ask the auditor</span>
         </div>
       </div>
     </>
