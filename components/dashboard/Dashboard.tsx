@@ -294,7 +294,7 @@ export default function Dashboard({ rules, gatewayWallet }: { rules: Rules; gate
         body: (
           <>
             <p>{sellerName(order.seller_id, data.sellers)} · {itemLabel(order)} · max {formatUsd(order.max_amount)}</p>
-            <p style={{ marginTop: 7 }}>The gateway re-checks the rules, asks the seller for a quote and pays it in USDC on Solana. This can take up to about 20 seconds.</p>
+            <p style={{ marginTop: 8 }}>The gateway re-checks the rules, asks the seller for a quote and pays it in USDC on Solana. This can take up to about 20 seconds.</p>
           </>
         ),
         run: () =>
