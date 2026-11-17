@@ -4,6 +4,14 @@
 
 Built for the UBC 2026 Hackathon (Agentic Payments & AI track, Best use of Solana, QuickNode Streams bounty).
 
+## At a glance
+
+- **Four attack and failure scenes, all verified live on Solana devnet:** a clean purchase is booked, an empty delivery is caught and the seller blocked, a prompt-injected order is denied before any money moves, and a payment made with a stolen key is flagged within about a second.
+- **The agent can't pay anyone.** It files orders; a gateway holding the only wallet key pays only orders that pass hard rules.
+- **The chain is the auditor's evidence.** QuickNode Streams reads every USDC payment that leaves the wallet, including ones that skipped the gateway, and matches each one to its order through the transaction memo.
+- **Finance-style output:** every clean purchase becomes a double-entry journal entry, and everything else becomes an exception a human resolves (Approve or Block Seller).
+- **456 automated tests** across 26 files, enforced by a pre-commit hook.
+
 ## The problem
 
 AI agents can now spend money on their own. A company that gives its agent a wallet usually gets spending limits or a payment log. Nobody independently checks two things for each payment:
@@ -71,6 +79,32 @@ flowchart LR
 - **Dashboard:** shows orders, payments, checks, journal entries and exceptions live, with a tracker for the four demo scenes, a one-sentence AI summary of each decision, and a read-only copilot that answers questions about the data.
 - **Hosting:** the app is deployed on Vercel (URL shared with judges). `docs/vercel.md` has the settings.
 
+## Security
+
+- **Separation of duties.** The buyer agent has one tool (`file_order`) and no key. Only the gateway can sign, and only for orders that passed the rules and whose seller quote carries the order's `order_id` as the memo.
+- **Default deny.** An unknown seller, any seller status other than `approved`, an over-limit amount, a quote to the wrong wallet, asset or network: all denied before anything is signed.
+- **Locked-down actions** (`lib/auth.ts`, `proxy.ts`). Every `/api` request is checked. The agent's key (`AGENT_API_KEY`) may only file orders, so an agent can never approve its own over-limit order or close its own exception. Approve, Block Seller and the copilot need a signed-in team session.
+- **Signed webhook.** The Streams webhook rejects any delivery without a valid QuickNode HMAC signature, so nobody can post fake payments.
+- **Secrets stay server-side.** No secret has a `NEXT_PUBLIC_` prefix; the browser only gets read-only Supabase access. Keys live in `.env.local`, which is gitignored.
+- **Devnet only.** The scripts refuse a non-devnet RPC URL.
+
+## Repo map
+
+| Path | What's there |
+| --- | --- |
+| `config/rules.json`, `lib/rules.ts` | The preventive rules and their exact deny reasons |
+| `app/api/orders`, `lib/gateway/` | The gateway: rules, saving the order, x402 payment, delivery checks |
+| `app/api/sellers/[seller]`, `lib/sellers/` | The three fake sellers (DataCo, CheapData, SketchyNews) and the seller side of x402 |
+| `lib/delivery.ts` | The three delivery checks: received, format, matches the order |
+| `app/api/webhooks/streams`, `lib/streams/` | QuickNode Streams webhook: signature check, payment parsing, matching by memo |
+| `lib/booking.ts` | Journal entries, exceptions, Approve and Block Seller |
+| `lib/buyer-agent.ts` | The Claude buyer agent and its single tool |
+| `lib/auth.ts`, `proxy.ts` | Team login and agent key checks on every API call |
+| `app/page.tsx`, `lib/dashboard/` | The live dashboard and four-scene tracker |
+| `demo/` | One rerunnable script per demo beat |
+| `supabase/` | Schema migrations and the seller seed |
+| `tests/` | Vitest suites for every part above |
+
 ## Status
 
 What's on `main` today:
@@ -89,15 +123,15 @@ What's on `main` today:
 | Supabase schema: six tables, read-only browser access, realtime | Working |
 | Dashboard: live updates, four-scene tracker, AI one-line summaries, read-only copilot | Working |
 | Vercel deployment | Working (URL shared with judges) |
-| CheapData seller (beat 2) | Built, merged (beat 2 not yet run live) |
-| SketchyNews preview page (`/api/sellers/sketchynews`) | Built |
+| CheapData seller (beat 2) | Working, verified live |
+| SketchyNews preview page with hidden injection (`/api/sellers/sketchynews`) | Working |
 
-### Verified live on devnet (Nov 13)
+### Verified live on devnet (Nov 13 to 15)
 
 | Beat | Result | Transaction |
 | --- | --- | --- |
 | 1. Clean purchase | Booked in about 9 s: payment matched by memo through QuickNode Streams, all 3 delivery checks passed, journal entry written (Dr Data purchases expense / Cr USDC - agent wallet, $0.10) | [Fwz6Pw8i…](https://explorer.solana.com/tx/Fwz6Pw8iRSEQ3vvoN14gvQWMgatDpTSMJb9kzopE5o6uffh9kBkZ41ze2eUnhCRVjE5KHYCMisYTy5fT5pSdnvT?cluster=devnet) |
-| 2. Empty delivery | Not yet run (waiting on the CheapData seller) | |
+| 2. Empty delivery | Paid $0.10, empty body: high `nothing_delivered` exception about 2.6 s after the order. After Block Seller, the agent's next CheapData order was denied: "seller blocked" | [28CQE1sL…](https://explorer.solana.com/tx/28CQE1sLZdJVhqwoCLkbMaW9U5qsZterF8Q11gkKDGQjQFswycqoDEhqkhFupEgf7BobyjF4kcZXsTWHoekomLR7?cluster=devnet) |
 | 3. Prompt injection | Denied: "seller not approved". No money moved. | none (nothing was sent) |
 | 4. Stolen key | Critical `no_order` exception about 1 s after the block | [D8GUiDkQ…](https://explorer.solana.com/tx/D8GUiDkQbQqJcc7Mk72cNVy3HCzzdQymDzTyRo8zQmww9tB38oPHd3q75eZEsLoagtjWHJ494gsdmQzkSrGcSti?cluster=devnet) |
 
@@ -106,7 +140,7 @@ What's on `main` today:
 Each beat is a script in `demo/` that can be rerun for the video.
 
 1. **Clean purchase:** the agent buys a SOL price quote from DataCo, and the payment is matched and booked as a journal entry. *Verified live on devnet.*
-2. **Empty delivery:** CheapData takes the payment and returns nothing, so a `nothing_delivered` exception appears. A human clicks Block Seller, and the agent's next CheapData order is denied: "seller blocked." *The script is on `main`; the CheapData seller is in progress.*
+2. **Empty delivery:** CheapData takes the payment and returns nothing, so a `nothing_delivered` exception appears. A human clicks Block Seller, and the agent's next CheapData order is denied: "seller blocked." *Verified live on devnet.*
 3. **Prompt injection:** an order to pay `premiumreports`, a seller that isn't approved, is denied before payment: "seller not approved." No money moves. *Verified live on devnet.* The script files the order directly, so the demo doesn't depend on whether a recent Claude model falls for the injection. The SketchyNews preview page (`/api/sellers/sketchynews`) shows the hidden injection.
 4. **Stolen key:** a script pays the attacker straight from the wallet, skipping the gateway, and a critical `no_order` exception appears within seconds. *Verified live on devnet (about 1 s after the block).*
 
@@ -140,12 +174,13 @@ You'll need **Node 26+**, a Supabase project, and devnet SOL and USDC (from `fau
    ```
    node --import ./scripts/ts-resolve.mjs demo/beat1.ts --dry-run   # builds the order with Claude, doesn't send it
    node --import ./scripts/ts-resolve.mjs demo/beat1.ts             # beat 1
+   node --conditions=react-server --import ./scripts/ts-resolve.mjs demo/beat2.ts   # beat 2 (pauses for you to click Block Seller)
    node --import ./scripts/ts-resolve.mjs demo/beat3.ts             # beat 3
    node --import ./scripts/ts-resolve.mjs demo/beat4.ts             # beat 4 (needs the Stream running)
    ```
-   Set `GATEWAY_URL` to run beats 1 and 3 against a deployed gateway instead of `localhost` (beat 4 skips the gateway).
+   Set `GATEWAY_URL` to run beats 1 to 3 against a deployed gateway instead of `localhost` (beat 4 skips the gateway).
 
-`npm run check` runs the typecheck, lint, tests and build.
+`npm run check` runs the typecheck, lint, tests and build. The same check runs as a pre-commit hook, so nothing lands without it passing.
 
 ### Environment variables
 
@@ -158,6 +193,7 @@ From `.env.example`:
 | `SOLANA_RPC_URL` | Solana devnet RPC endpoint. The scripts refuse a non-devnet URL. |
 | `X402_FACILITATOR_URL` | The x402 facilitator the sellers use to verify and settle payments (PayAI). |
 | `DATACO_WALLET` | DataCo's public wallet address, where its quotes ask to be paid. It must match DataCo's row in `sellers`. |
+| `CHEAPDATA_WALLET` | CheapData's public wallet address. It must match CheapData's row in `sellers`. |
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL. |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase public key for the dashboard (read-only access). |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase service-role key for server code. Never sent to the browser. |
