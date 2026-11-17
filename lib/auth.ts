@@ -116,7 +116,7 @@ export function authorize(req: AuthRequest, config: AuthConfig | null, nowMs: nu
     // SameSite=Strict already withholds the cookie cross-site; this is the second lock.
     if (req.origin && req.host && !sameHost(req.origin, req.host)) return { ok: false, status: 403, error: "cross-site request refused" };
   } else {
-    return { ok: false, status: 401, error: "authentication required" };
+    return { ok: false, status: 401, error: "authentication required: sign in at /login" };
   }
 
   if (!rolesFor(req.method, req.pathname).includes(role)) return { ok: false, status: 403, error: "not allowed for this caller" };

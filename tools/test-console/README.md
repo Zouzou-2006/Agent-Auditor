@@ -10,7 +10,8 @@ npm run build && npm start              # the app on http://localhost:3000
 node tools/test-console/server.mjs      # the console on http://localhost:4000
 ```
 
-It reads `.env.local` (Supabase URL and service-role key, gateway wallet address, Solana RPC).
+It reads `.env.local` (Supabase URL and service-role key, gateway wallet address, Solana RPC, and
+`AGENT_API_KEY` / `DASHBOARD_PASSWORD` to authenticate its order and human-action calls).
 The keys stay in the Node process: the browser only gets table rows and API replies. It listens
 on `127.0.0.1` only.
 

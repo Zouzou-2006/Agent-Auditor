@@ -51,7 +51,7 @@ describe("readAuthConfig fails closed", () => {
 
 describe("authorize: every protected action endpoint", () => {
   it.each(PROTECTED)("%s: 401 without credentials", (pathname) => {
-    expect(authorize(req({ pathname }), config, NOW)).toEqual({ ok: false, status: 401, error: "authentication required" });
+    expect(authorize(req({ pathname }), config, NOW)).toEqual({ ok: false, status: 401, error: "authentication required: sign in at /login" });
   });
 
   it.each(PROTECTED)("%s: 401 with a wrong bearer key", (pathname) => {

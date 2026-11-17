@@ -59,3 +59,19 @@ describe("copilot tools", () => {
     expect(() => runTool("approve_order", {}, ctx)).toThrow(ToolInputError);
   });
 });
+
+describe("copilot system prompt", () => {
+  it("uses the dashboard's own labels for every status and problem type", async () => {
+    const { SYSTEM_PROMPT } = await import("@/lib/assistant/tools");
+    const { EXCEPTION_TITLE, EXCEPTION_STATUS_LABEL, statusLabel } = await import("@/lib/dashboard/words");
+    for (const label of Object.values(EXCEPTION_TITLE)) expect(SYSTEM_PROMPT).toContain(`"${label}"`);
+    for (const label of Object.values(EXCEPTION_STATUS_LABEL)) expect(SYSTEM_PROMPT).toContain(`"${label}"`);
+    for (const s of ["booked", "denied", "paying", "paid", "pending_review", "exception"]) expect(SYSTEM_PROMPT).toContain(`"${statusLabel(s)}"`);
+  });
+
+  it("never sends a stolen-key alert to Approve or Block Seller", async () => {
+    const { SYSTEM_PROMPT } = await import("@/lib/assistant/tools");
+    expect(SYSTEM_PROMPT).toMatch(/A Payment with no order has NO button/);
+    expect(SYSTEM_PROMPT).not.toMatch(/Approve or Block Seller on an open exception/);
+  });
+});
