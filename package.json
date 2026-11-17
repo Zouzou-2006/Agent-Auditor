@@ -12,7 +12,8 @@
     "lint": "eslint .",
     "test": "vitest run",
     "build": "next build",
-    "check": "npm run typecheck && npm run lint && npm run test && npm run build"
+    "check": "npm run typecheck && npm run lint && npm run test && npm run build",
+    "reset": "node --conditions=react-server --import ./scripts/ts-resolve.mjs demo/reset.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "1.8.0",
