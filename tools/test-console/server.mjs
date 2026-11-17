@@ -72,10 +72,29 @@ async function state() {
   return { ...out, wallets: walletCache.data, gatewayUp, gateway: GATEWAY };
 }
 
+// Auth (lib/auth.ts): orders go out with the agent key; human actions use a team session cookie,
+// signed in once with DASHBOARD_PASSWORD. Both come from .env.local and never reach the browser.
+let teamCookie = null;
+async function teamSession() {
+  if (teamCookie) return teamCookie;
+  const r = await fetch(`${GATEWAY}/api/auth/login`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ password: process.env.DASHBOARD_PASSWORD ?? "" }) });
+  if (r.status !== 204) return null;
+  teamCookie = (r.headers.get("set-cookie") ?? "").split(";")[0];
+  return teamCookie;
+}
+
+async function authHeaders(pathname) {
+  if (pathname === "/api/orders") return process.env.AGENT_API_KEY ? { authorization: `Bearer ${process.env.AGENT_API_KEY}` } : {};
+  const cookie = await teamSession();
+  return cookie ? { cookie, origin: GATEWAY } : {};
+}
+
 async function proxy(pathname, body) {
   const t0 = Date.now();
   try {
-    const r = await fetch(`${GATEWAY}${pathname}`, { method: "POST", headers: { "content-type": "application/json" }, body, signal: AbortSignal.timeout(130000) });
+    const headers = { "content-type": "application/json", ...(await authHeaders(pathname)) };
+    const r = await fetch(`${GATEWAY}${pathname}`, { method: "POST", headers, body, signal: AbortSignal.timeout(300000) });
+    if (r.status === 401) teamCookie = null; // expired session: sign in again next time
     return { http: r.status, ms: Date.now() - t0, body: await r.text() };
   } catch (e) {
     return { http: 0, ms: Date.now() - t0, body: String(e) };

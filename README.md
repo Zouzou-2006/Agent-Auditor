@@ -4,13 +4,15 @@
 
 Built for the UBC 2026 Hackathon (Agentic Payments & AI track, Best use of Solana, QuickNode Streams bounty).
 
+**Live demo:** https://agentauditor-kappa.vercel.app (Solana devnet). Viewing the dashboard is open; approving, blocking a seller and the assistant need the team sign-in at `/login`.
+
 ## At a glance
 
 - **Four attack and failure scenes, all verified live on Solana devnet:** a clean purchase is booked, an empty delivery is caught and the seller blocked, a prompt-injected order is denied before any money moves, and a payment made with a stolen key is flagged within about a second.
 - **The agent can't pay anyone.** It files orders; a gateway holding the only wallet key pays only orders that pass hard rules.
 - **The chain is the auditor's evidence.** QuickNode Streams reads every USDC payment that leaves the wallet, including ones that skipped the gateway, and matches each one to its order through the transaction memo.
 - **Finance-style output:** every clean purchase becomes a double-entry journal entry, and everything else becomes an exception a human resolves (Approve or Block Seller).
-- **456 automated tests** across 26 files, enforced by a pre-commit hook.
+- **459 automated tests** across 27 files, enforced by a pre-commit hook.
 
 ## The problem
 

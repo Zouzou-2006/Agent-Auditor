@@ -3,6 +3,7 @@
 // drawer, the command palette, the floating "Ask the auditor" assistant, confirmations for human actions, and toasts.
 // Reads with the anon key only; every action goes through the existing API routes (SPEC.md section 10).
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ExceptionRow, OrderRow, OrderStatus } from "@/lib/db-types";
 import { getBrowserClient } from "@/lib/db-browser";
@@ -96,6 +97,16 @@ export default function Dashboard({ rules, gatewayWallet }: { rules: Rules; gate
   const [copilot, setCopilot] = useState<{ open: boolean; seed?: string; key: number }>({ open: false, key: 0 });
   const [unseen, setUnseen] = useState(false);
   const [palette, setPalette] = useState(false);
+  // Human actions (Approve, Block Seller, the assistant) need a team sign-in (lib/auth.ts). null = not checked yet.
+  const [signedIn, setSignedIn] = useState<boolean | null>(null);
+  useEffect(() => {
+    let stop = false;
+    fetch("/api/auth/session", { cache: "no-store" })
+      .then((r) => r.json() as Promise<{ signedIn?: boolean }>)
+      .then((j) => { if (!stop) setSignedIn(j.signedIn === true); })
+      .catch(() => { if (!stop) setSignedIn(null); });
+    return () => { stop = true; };
+  }, []);
   const [balance, setBalance] = useState<number | null>(null);
   const [attnOpen, setAttnOpen] = useState(false);
   /** The item a "Review" button asked the needs-you drawer to highlight, or null. */
@@ -488,6 +499,11 @@ export default function Dashboard({ rules, gatewayWallet }: { rules: Rules; gate
               <span className="label">Jump to order, exception…</span>
               <kbd>{mod} K</kbd>
             </button>
+            {signedIn === false && (
+              <Link className="btn btn-sm" href="/login" title="Sign in to approve orders, block sellers and ask the assistant">
+                Sign in
+              </Link>
+            )}
             <button className="btn btn-ghost btn-sm" onClick={() => void refresh()} aria-label="Refresh">
               <Icon name="refresh" />
             </button>
