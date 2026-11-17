@@ -4,6 +4,7 @@
 // Reads with the anon key only; every action goes through the existing API routes (SPEC.md section 10).
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ExceptionRow, OrderRow, OrderStatus } from "@/lib/db-types";
 import { getBrowserClient } from "@/lib/db-browser";
@@ -80,6 +81,7 @@ function rowKeys(d: DashboardData): Set<string> {
 }
 
 export default function Dashboard({ rules, gatewayWallet }: { rules: Rules; gatewayWallet: string | null }) {
+  const router = useRouter();
   const mod = useModKey();
   const [data, setData] = useState<DashboardData>(EMPTY_DATA);
   const [loading, setLoading] = useState(true);
@@ -218,10 +220,14 @@ export default function Dashboard({ rules, gatewayWallet }: { rules: Rules; gate
   }, [gatewayWallet, rules.usdc_mint]);
 
   const openCopilot = useCallback((seed?: string) => {
+    if (signedIn === false) {
+      router.push("/login");
+      return;
+    }
     setUnseen(false);
     setPalette(false);
     setCopilot((c) => ({ open: true, seed, key: seed ? c.key + 1 : c.key }));
-  }, []);
+  }, [router, signedIn]);
   const closeCopilot = useCallback(() => setCopilot((c) => ({ ...c, open: false, seed: undefined })), []);
 
   // Hash navigation and keyboard shortcuts: Ctrl/⌘+K palette, Ctrl/⌘+/ copilot.
@@ -239,8 +245,8 @@ export default function Dashboard({ rules, gatewayWallet }: { rules: Rules; gate
         setPalette((p) => !p);
       } else if (mod && e.key === "/") {
         e.preventDefault();
-        setUnseen(false);
-        setCopilot((c) => ({ ...c, open: !c.open, seed: undefined }));
+        if (copilot.open) closeCopilot();
+        else openCopilot();
       } else if (!mod && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "n" && !isTyping(e.target)) {
         e.preventDefault();
         setAttnFocus(null);
@@ -252,7 +258,7 @@ export default function Dashboard({ rules, gatewayWallet }: { rules: Rules; gate
       window.removeEventListener("hashchange", fromHash);
       window.removeEventListener("keydown", onKey);
     };
-  }, []);
+  }, [closeCopilot, copilot.open, openCopilot]);
 
   const navigate = useCallback((target: string) => {
     const [id, status] = target.split(":");
