@@ -2,12 +2,14 @@
 // Body: { "messages": [{ "role": "user" | "assistant", "content": "..." }], "context"?: { section,
 // order_id, exception_id } } (last message is the user's; context is what they're looking at).
 // Streams newline-delimited JSON events: {"t":"text","v":"..."} | {"t":"tool","v":"get_order","a":"<id>"}
-// | {"t":"error","v":"..."} | {"t":"done"}. 400 for a bad body, 503 if the Claude key is missing.
-// The tools can only read (lib/assistant/tools.ts), and the data comes from the anon client.
+// | {"t":"error","v":"..."} | {"t":"done"}. 400 for a bad body, 429 when one IP asks too fast,
+// 503 if the Claude key is missing.
+// Public (no sign-in, see lib/auth.ts): the tools can only read (lib/assistant/tools.ts), the data
+// comes from the anon client, and the Claude key stays on the server.
 
-import { assertAuthorized } from "@/lib/auth-http";
 import Anthropic from "@anthropic-ai/sdk";
 import rulesJson from "@/config/rules.json";
+import { clientIp, takeAssistantSlot } from "@/lib/assistant/rate-limit";
 import { runTool, SYSTEM_PROMPT, ToolInputError, TOOLS, type ToolContext } from "@/lib/assistant/tools";
 import type { Rules } from "@/lib/dashboard/model";
 import { loadDashboardData } from "@/lib/dashboard/load";
@@ -53,9 +55,6 @@ function parseBody(body: unknown): ChatTurn[] | null {
 }
 
 export async function POST(req: Request): Promise<Response> {
-  const denied = assertAuthorized(req); // also enforced by proxy.ts; checked here too (defense in depth)
-  if (denied) return denied;
-
   let turns: ChatTurn[] | null = null;
   let context: string | null = null;
   try {
@@ -67,6 +66,13 @@ export async function POST(req: Request): Promise<Response> {
   }
   if (!turns) return Response.json({ error: 'body must be {"messages": [...]} ending with a user message' }, { status: 400 });
   if (!process.env.ANTHROPIC_API_KEY) return Response.json({ error: "copilot is not configured (ANTHROPIC_API_KEY)" }, { status: 503 });
+  const retryAfter = takeAssistantSlot(clientIp(req), Date.now());
+  if (retryAfter) {
+    return Response.json(
+      { error: "Too many questions from this network. Try again in a few minutes." },
+      { status: 429, headers: { "retry-after": String(retryAfter), "cache-control": "no-store" } },
+    );
+  }
 
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const encoder = new TextEncoder();

@@ -32,7 +32,7 @@ const req = (o: Partial<AuthRequest>): AuthRequest => ({
   ...o,
 });
 
-const PROTECTED = ["/api/orders", "/api/orders/11111111-1111-4111-8111-111111111111/approve", "/api/exceptions/e1", "/api/assistant", "/api/summaries"];
+const PROTECTED = ["/api/orders", "/api/orders/11111111-1111-4111-8111-111111111111/approve", "/api/exceptions/e1", "/api/summaries"];
 
 describe("readAuthConfig fails closed", () => {
   it("is null when any variable is missing or too short", () => {
@@ -88,11 +88,16 @@ describe("authorize: every protected action endpoint", () => {
 });
 
 describe("public paths stay public", () => {
-  it.each(["/api/sellers/dataco", "/api/sellers/cheapdata", "/api/webhooks/streams", "/api/auth/login", "/api/auth/session"])("%s", (p) => {
+  it.each(["/api/sellers/dataco", "/api/sellers/cheapdata", "/api/webhooks/streams", "/api/auth/login", "/api/auth/session", "/api/assistant"])("%s", (p) => {
     expect(isPublicApiPath(p)).toBe(true);
   });
-  it.each(["/api/orders", "/api/webhooks/other", "/api/sellersX", "/api/assistant"])("%s is not public", (p) => {
+  it.each(["/api/orders", "/api/webhooks/other", "/api/sellersX", "/api/assistantX", "/api/assistant/extra", "/api/summaries"])("%s is not public", (p) => {
     expect(isPublicApiPath(p)).toBe(false);
+  });
+  it("the read-only assistant needs no credentials, even when auth isn't configured", () => {
+    expect(authorize(req({ pathname: "/api/assistant" }), config, NOW)).toEqual({ ok: true, role: null });
+    expect(authorize(req({ pathname: "/api/assistant" }), null, NOW)).toEqual({ ok: true, role: null });
+    expect(authorize(req({ pathname: "/api/assistant", authorization: "Bearer wrong-key" }), config, NOW)).toEqual({ ok: true, role: null });
   });
 });
 

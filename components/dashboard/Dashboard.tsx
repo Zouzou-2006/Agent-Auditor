@@ -4,7 +4,6 @@
 // Reads with the anon key only; every action goes through the existing API routes (SPEC.md section 10).
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ExceptionRow, OrderRow, OrderStatus } from "@/lib/db-types";
 import { getBrowserClient } from "@/lib/db-browser";
@@ -81,7 +80,6 @@ function rowKeys(d: DashboardData): Set<string> {
 }
 
 export default function Dashboard({ rules, gatewayWallet }: { rules: Rules; gatewayWallet: string | null }) {
-  const router = useRouter();
   const mod = useModKey();
   const [data, setData] = useState<DashboardData>(EMPTY_DATA);
   const [loading, setLoading] = useState(true);
@@ -99,7 +97,8 @@ export default function Dashboard({ rules, gatewayWallet }: { rules: Rules; gate
   const [copilot, setCopilot] = useState<{ open: boolean; seed?: string; key: number }>({ open: false, key: 0 });
   const [unseen, setUnseen] = useState(false);
   const [palette, setPalette] = useState(false);
-  // Human actions (Approve, Block Seller, the assistant) need a team sign-in (lib/auth.ts). null = not checked yet.
+  // Human actions (Approve, Block Seller, summaries) need a team sign-in (lib/auth.ts); the read-only
+  // assistant doesn't. null = not checked yet.
   const [signedIn, setSignedIn] = useState<boolean | null>(null);
   useEffect(() => {
     let stop = false;
@@ -220,14 +219,10 @@ export default function Dashboard({ rules, gatewayWallet }: { rules: Rules; gate
   }, [gatewayWallet, rules.usdc_mint]);
 
   const openCopilot = useCallback((seed?: string) => {
-    if (signedIn === false) {
-      router.push("/login");
-      return;
-    }
     setUnseen(false);
     setPalette(false);
     setCopilot((c) => ({ open: true, seed, key: seed ? c.key + 1 : c.key }));
-  }, [router, signedIn]);
+  }, []);
   const closeCopilot = useCallback(() => setCopilot((c) => ({ ...c, open: false, seed: undefined })), []);
 
   // Hash navigation and keyboard shortcuts: Ctrl/⌘+K palette, Ctrl/⌘+/ copilot.
@@ -506,7 +501,7 @@ export default function Dashboard({ rules, gatewayWallet }: { rules: Rules; gate
               <kbd>{mod} K</kbd>
             </button>
             {signedIn === false && (
-              <Link className="btn btn-sm" href="/login" title="Sign in to approve orders, block sellers and ask the assistant">
+              <Link className="btn btn-sm" href="/login" title="Sign in to approve orders and block sellers">
                 Sign in
               </Link>
             )}
