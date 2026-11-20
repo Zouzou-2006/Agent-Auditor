@@ -6,8 +6,12 @@
 // - "team": a human who signed in at /login with DASHBOARD_PASSWORD. Gets an HttpOnly, SameSite=Strict
 //   session cookie signed with AUTH_SESSION_SECRET. May do every action.
 // - "agent": the buyer agent, sending `Authorization: Bearer <AGENT_API_KEY>`. May only file orders
-//   (POST /api/orders). It may NOT approve orders, resolve exceptions or spend Claude credits: an
+//   (POST /api/orders). It may NOT approve orders, resolve exceptions or write summaries: an
 //   agent must never approve its own over-limit order (separation of duties) -> 403.
+//
+// The dashboard copilot (POST /api/assistant) is public so visitors can try it without signing in.
+// That is safe because it is read-only: its tools read an anon-key snapshot (RLS: SELECT only) and
+// it has no tool that pays, approves, blocks or writes. Its own route rate-limits each IP.
 //
 // No secret ever reaches the browser: none of these variables has a NEXT_PUBLIC_ prefix, the cookie
 // holds only a signed role + expiry, and error bodies never echo a credential.
@@ -67,16 +71,21 @@ const POLICY: { method: string; path: RegExp; roles: Role[] }[] = [
   { method: "POST", path: /^\/api\/orders\/?$/, roles: ["team", "agent"] },
   { method: "POST", path: /^\/api\/orders\/[^/]+\/approve\/?$/, roles: ["team"] },
   { method: "POST", path: /^\/api\/exceptions\/[^/]+\/?$/, roles: ["team"] },
-  { method: "POST", path: /^\/api\/assistant\/?$/, roles: ["team"] },
   { method: "POST", path: /^\/api\/summaries\/?$/, roles: ["team"] },
 ];
 
 /**
  * Public by design: sellers are paid with x402 (the payment is the authorization), the Streams
- * webhook verifies QuickNode's HMAC signature itself, and /api/auth is how a human signs in.
+ * webhook verifies QuickNode's HMAC signature itself, /api/auth is how a human signs in, and the
+ * read-only copilot (/api/assistant) can't change anything.
  */
 export function isPublicApiPath(pathname: string): boolean {
-  return /^\/api\/sellers(\/|$)/.test(pathname) || /^\/api\/webhooks\/streams\/?$/.test(pathname) || /^\/api\/auth(\/|$)/.test(pathname);
+  return (
+    /^\/api\/sellers(\/|$)/.test(pathname) ||
+    /^\/api\/webhooks\/streams\/?$/.test(pathname) ||
+    /^\/api\/auth(\/|$)/.test(pathname) ||
+    /^\/api\/assistant\/?$/.test(pathname)
+  );
 }
 
 export function rolesFor(method: string, pathname: string): Role[] {

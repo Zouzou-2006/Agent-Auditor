@@ -1,5 +1,5 @@
 "use client";
-// /login: team sign-in for human actions (Approve, Block Seller, copilot, summaries). Owner: Nizar.
+// /login: team sign-in for human actions (Approve, Block Seller, summaries). Owner: Nizar.
 // Posts the password to /api/auth/login, which sets an HttpOnly cookie; the password never touches
 // client storage. Standalone page, deliberately separate from the dashboard (Aidan's) so it doesn't
 // change any dashboard file. Styling uses the shared classes in app/globals.css.

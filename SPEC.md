@@ -304,7 +304,8 @@ POST /api/assistant
 ```
 - Answers questions about the six tables with Claude. Its tools only read, from a snapshot loaded with the anon key (RLS: SELECT only), so it can't pay, approve, block or change anything. The dashboard buttons stay the only way to act.
 - `context` is what the user is looking at, so "this order" works. `a` lets the dashboard link to the order's audit trail.
-- `400 { "error": "..." }` for a bad body, `503` if `ANTHROPIC_API_KEY` isn't set.
+- **Public: no sign-in** (Nov 20, so judges and visitors can try it). Safe because it's read-only; the Claude key never leaves the server.
+- `400 { "error": "..." }` for a bad body, `429 { "error": "..." }` (with `Retry-After`) past 30 questions per IP per 10 minutes, `503` if `ANTHROPIC_API_KEY` isn't set.
 
 **AI summaries (the one-sentence "why" in sections 1 and 3):**
 ```
@@ -321,14 +322,14 @@ POST /api/summaries
 | Endpoint | Allowed callers |
 |---|---|
 | `POST /api/orders` | team session, or the buyer agent with `Authorization: Bearer <AGENT_API_KEY>` |
-| `POST /api/orders/[id]/approve`, `POST /api/exceptions/[id]`, `POST /api/assistant`, `POST /api/summaries` | team session only (the agent key gets `403`: an agent never approves its own order) |
-| `/api/sellers/*`, `POST /api/webhooks/streams`, `/api/auth/*` | public (x402 payment / QuickNode HMAC / sign-in) |
+| `POST /api/orders/[id]/approve`, `POST /api/exceptions/[id]`, `POST /api/summaries` | team session only (the agent key gets `403`: an agent never approves its own order) |
+| `/api/sellers/*`, `POST /api/webhooks/streams`, `/api/auth/*`, `POST /api/assistant` | public (x402 payment / QuickNode HMAC / sign-in / read-only copilot, rate-limited per IP) |
 | any other `/api/*` route | team session only (default deny) |
 
 - A team session comes from `POST /api/auth/login { "password": "<DASHBOARD_PASSWORD>" }` (or the `/login` page): `204` and an HttpOnly, SameSite=Strict cookie for 12 hours. `401` wrong password, `429` too many tries. `POST /api/auth/logout` clears it. `GET /api/auth/session` -> `{ "signedIn": bool, "configured": bool }`.
 - Errors are `{ "error": "..." }`: `401` missing or invalid credentials, `403` not allowed for this caller (or a cross-site request), `503` auth not configured. Every check fails closed.
 - New secrets (never `NEXT_PUBLIC_`): `DASHBOARD_PASSWORD` (12+ chars), `AUTH_SESSION_SECRET` and `AGENT_API_KEY` (32+ chars each).
-- Viewing the dashboard stays open: it reads Supabase with the read-only anon key.
+- Viewing the dashboard and the copilot stay open: both read Supabase with the read-only anon key.
 
 ## 11. Who owns what
 

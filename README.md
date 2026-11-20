@@ -4,7 +4,7 @@
 
 Built for the UBC 2026 Hackathon (Agentic Payments & AI track, Best use of Solana, QuickNode Streams bounty).
 
-**Live demo:** https://agentauditor-kappa.vercel.app (Solana devnet). Viewing the dashboard is open; approving, blocking a seller and the assistant need the team sign-in at `/login`.
+**Live demo:** https://agentauditor-kappa.vercel.app (Solana devnet). Viewing the dashboard and asking the read-only assistant are open to everyone; approving and blocking a seller need the team sign-in at `/login`.
 
 ## At a glance
 
@@ -85,7 +85,7 @@ flowchart LR
 
 - **Separation of duties.** The buyer agent has one tool (`file_order`) and no key. Only the gateway can sign, and only for orders that passed the rules and whose seller quote carries the order's `order_id` as the memo.
 - **Default deny.** An unknown seller, any seller status other than `approved`, an over-limit amount, a quote to the wrong wallet, asset or network: all denied before anything is signed.
-- **Locked-down actions** (`lib/auth.ts`, `proxy.ts`). Every `/api` request is checked. The agent's key (`AGENT_API_KEY`) may only file orders, so an agent can never approve its own over-limit order or close its own exception. Approve, Block Seller and the copilot need a signed-in team session.
+- **Locked-down actions** (`lib/auth.ts`, `proxy.ts`). Every `/api` request is checked. The agent's key (`AGENT_API_KEY`) may only file orders, so an agent can never approve its own over-limit order or close its own exception. Approve, Block Seller and summaries need a signed-in team session. The copilot is open to everyone because it can only read (anon-key snapshot, no write tools) and is rate-limited per IP.
 - **Signed webhook.** The Streams webhook rejects any delivery without a valid QuickNode HMAC signature, so nobody can post fake payments.
 - **Secrets stay server-side.** No secret has a `NEXT_PUBLIC_` prefix; the browser only gets read-only Supabase access. Keys live in `.env.local`, which is gitignored.
 - **Devnet only.** The scripts refuse a non-devnet RPC URL.
@@ -202,7 +202,7 @@ From `.env.example`:
 | `QUICKNODE_STREAMS_SECRET` | The QuickNode Stream's security token. The webhook uses it to check the signature on every delivery and rejects anything unsigned. |
 | `ANTHROPIC_API_KEY` | Claude API key for the buyer agent. |
 | `AGENT_API_KEY` | The buyer agent's key for the gateway, sent as `Authorization: Bearer <key>` on `POST /api/orders` (32+ characters). Without it the agent files nothing. |
-| `DASHBOARD_PASSWORD` | The team's shared password for `/login`, which unlocks Approve, Block Seller, the copilot and summaries (12+ characters). Shared out of band; never commit it or post it in Slack. |
+| `DASHBOARD_PASSWORD` | The team's shared password for `/login`, which unlocks Approve, Block Seller and summaries (12+ characters). Shared out of band; never commit it or post it in Slack. |
 | `AUTH_SESSION_SECRET` | Signs the team's session cookie (32+ characters). Server only; never commit it. |
 | `USDC_MINT` | The devnet USDC mint (`4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU`). |
 
